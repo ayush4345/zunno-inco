@@ -1,0 +1,19 @@
+# node
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+
+# foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+
+# rust
+target/
+
+# misc
+.DS_Store
+*.log
