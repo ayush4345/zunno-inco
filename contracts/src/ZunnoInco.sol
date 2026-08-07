@@ -1,48 +1,60 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-// ┌───────────────────────────────────────────────────────────────────────┐
-// │  ZunnoInco — Confidential UNO on Inco Lightning (FHE)                    │
-// │  WIP SCAFFOLD — design skeleton, NOT compiled/tested/audited.            │
-// │  Validate every Inco API against https://docs.inco.org before use.       │
-// │  Card encoding: euint8 code 0..(DECK_SIZE-1); map to color/value off-    │
-// │  chain or via a helper. Deal/shuffle: prefer Inco's ConfidentialDeck.    │
-// └───────────────────────────────────────────────────────────────────────┘
+// ┌──────────────────────────────────────────────────────────────────────────┐
+// │  ZunnoInco — Confidential UNO on Inco Lightning v1                          │
+// │                                                                            │
+// │  Built on Inco's ConfidentialDeck template (the "five moves"):             │
+// │    _newShuffledDeck(n) · _dealTo(player) · _draw() · _revealCard/           │
+// │    _dealFaceUp · _verifyValue(card, value, sigs)                           │
+// │  Inco = confidential compute for the EVM (secret = decrypted by Inco;       │
+// │  "provably fair" = covalidator attestation). Hands stay secret on-chain;    │
+// │  only played / showdown cards become public.                               │
+// │                                                                            │
+// │  STATUS: WIP. Plaintext UNO logic (turns, legality via UnoCards) is         │
+// │  complete; ConfidentialDeck method names/returns must be confirmed against  │
+// │  github.com/Inco-fhevm/confidential-deck-template when the kit is vendored  │
+// │  into ./kit. Not yet compiled/tested.                                       │
+// └──────────────────────────────────────────────────────────────────────────┘
 
-import {e, euint8, ebool, inco} from "@inco/lightning/src/Lib.sol";
-import {DecryptionAttestation} from "@inco/lightning/src/lightning-parts/DecryptionAttester.types.sol";
+import {euint256} from "@inco/lightning/src/Lib.sol";
+import {ConfidentialDeck} from "./kit/ConfidentialDeck.sol";
+import {UnoCards} from "./UnoCards.sol";
 
-contract ZunnoInco {
-    // ---- Types --------------------------------------------------------------
-    enum Phase { Waiting, Dealing, Active, Showdown, Finished }
+contract ZunnoInco is ConfidentialDeck {
+    using UnoCards for uint256;
+
+    uint256 constant DECK = 108; // full UNO deck
+    uint8 constant START_HAND = 7;
+    uint16 constant RAKE_BPS = 300; // 3% -> Megapot jackpot (see BUILD_PLAN)
+
+    enum Phase { Waiting, Active, Finished }
 
     struct Game {
         address[] players;
-        uint8 turn;              // index into players
-        int8 direction;          // +1 / -1 (reverse card)
-        uint256 pot;             // escrow (wei or token units)
+        uint8 turn; // index into players
+        int8 dir; // +1 or -1 (reverse)
+        uint256 pot; // escrow
         uint256 buyIn;
         Phase phase;
-        euint8 topDiscard;       // last played card (public once played)
+        uint256 topValue; // current top-of-pile card (public)
+        uint8 activeColor; // color in force (top color, or wild's chosen color)
         address winner;
     }
 
-    // gameId => Game
-    mapping(uint256 => Game) public games;
-    // gameId => player => encrypted hand (dynamic; UNO hands grow/shrink)
-    mapping(uint256 => mapping(address => euint8[])) internal hands;
-    // gameId => remaining encrypted draw pile
-    mapping(uint256 => euint8[]) internal deck;
-
     uint256 public nextGameId;
+    mapping(uint256 => Game) public games;
+    // secret hands: each entry is a ConfidentialDeck card handle, allow()'d to its owner
+    mapping(uint256 => mapping(address => euint256[])) internal hands;
 
     event GameCreated(uint256 indexed gameId, address indexed creator, uint256 buyIn);
     event PlayerJoined(uint256 indexed gameId, address indexed player);
-    event GameStarted(uint256 indexed gameId);
-    event CardPlayed(uint256 indexed gameId, address indexed player); // value revealed via topDiscard
-    event GameFinished(uint256 indexed gameId, address indexed winner, uint256 pot);
+    event GameStarted(uint256 indexed gameId, uint256 topValue, uint8 activeColor);
+    event CardDrawn(uint256 indexed gameId, address indexed player);
+    event CardPlayed(uint256 indexed gameId, address indexed player, uint256 value, uint8 activeColor);
+    event GameFinished(uint256 indexed gameId, address indexed winner, uint256 payout);
 
-    // ---- Lobby / escrow -----------------------------------------------------
+    // ── Lobby / escrow ────────────────────────────────────────────────────────
     function createGame(uint256 buyIn) external payable returns (uint256 gameId) {
         require(msg.value >= buyIn, "buy-in");
         gameId = nextGameId++;
@@ -50,7 +62,7 @@ contract ZunnoInco {
         g.players.push(msg.sender);
         g.buyIn = buyIn;
         g.pot = msg.value;
-        g.direction = 1;
+        g.dir = 1;
         g.phase = Phase.Waiting;
         emit GameCreated(gameId, msg.sender, buyIn);
     }
@@ -64,112 +76,138 @@ contract ZunnoInco {
         emit PlayerJoined(gameId, msg.sender);
     }
 
-    // ---- Deal (confidential + verifiably random) ----------------------------
-    // TODO: prefer Inco ConfidentialDeck for a proper shuffle + draw-without-
-    // replacement. Sketch below shows the intent: each dealt card is an
-    // encrypted handle that ONLY its owner can decrypt (e.allow), while the
-    // contract retains compute rights (e.allowThis) for later reveal.
+    // ── Start: shuffle, deal secret hands, flip first card ────────────────────
+    // Attach msg.value >= deckFee(DECK) for the shuffle op (ConfidentialDeck).
     function startGame(uint256 gameId) external payable {
         Game storage g = games[gameId];
         require(g.phase == Phase.Waiting, "phase");
-        require(g.players.length >= 2, "need players");
-        // require(msg.value == inco.getFee() * ...);  // FHE op fees — see docs
+        require(g.players.length >= 2, "need >=2 players");
 
-        g.phase = Phase.Dealing;
-        uint8 HAND = 7; // UNO starting hand
+        _newShuffledDeck(DECK); // one confidential shuffle
+
         for (uint256 i = 0; i < g.players.length; i++) {
             address p = g.players[i];
-            for (uint8 c = 0; c < HAND; c++) {
-                euint8 card = _drawEncrypted(gameId); // TODO distinct-draw
-                e.allow(card, p);      // only p can user-decrypt this card
-                e.allowThis(card);     // contract can compute/reveal later
-                hands[gameId][p].push(card);
+            for (uint8 c = 0; c < START_HAND; c++) {
+                hands[gameId][p].push(_dealTo(p)); // secret: only p can peek
             }
         }
-        // flip first discard (public)
-        g.topDiscard = _revealTop(gameId); // TODO: attested public decrypt
+
+        // Flip the first non-wild card face up to open the pile.
+        // TODO: confirm _dealFaceUp() returns the public plaintext value; loop
+        // until a non-wild card is drawn (a wild opener needs a chosen color).
+        uint256 top = _dealFaceUp();
+        g.topValue = top;
+        g.activeColor = UnoCards.decode(top).color;
         g.phase = Phase.Active;
-        emit GameStarted(gameId);
+        emit GameStarted(gameId, top, g.activeColor);
     }
 
-    // ---- Draw ---------------------------------------------------------------
+    // ── Draw ──────────────────────────────────────────────────────────────────
     function drawCard(uint256 gameId) external {
         Game storage g = games[gameId];
         require(g.phase == Phase.Active, "phase");
-        require(g.players[g.turn] == msg.sender, "not your turn");
-        euint8 card = _drawEncrypted(gameId);
-        e.allow(card, msg.sender);
-        e.allowThis(card);
-        hands[gameId][msg.sender].push(card);
-        // player user-decrypts client-side to see the drawn card (fast)
+        require(_current(g) == msg.sender, "not your turn");
+        hands[gameId][msg.sender].push(_dealTo(msg.sender)); // secret to caller
+        emit CardDrawn(gameId, msg.sender);
+        // House rule: drawing ends the turn (keeps flow simple for the demo).
+        _advance(g);
     }
 
-    // ---- Play ---------------------------------------------------------------
-    // The played card becomes PUBLIC. Client submits an attested decryption of
-    // the chosen hand card; contract verifies covalidator signatures, checks
-    // legality vs topDiscard (same color OR value OR wild), updates state.
+    // ── Play ────────────────────────────────────────────────────────────────
+    // The player peeked their card client-side (allow) and submits its value +
+    // covalidator signatures. _verifyValue binds that value to the on-chain
+    // handle (they cannot lie). Then we enforce UNO legality on the value.
+    // chosenColor is used only when the played card is a wild.
     function playCard(
         uint256 gameId,
         uint256 handIndex,
-        DecryptionAttestation calldata dec,
-        bytes[] calldata sigs
+        uint256 claimedValue,
+        bytes[] calldata sigs,
+        uint8 chosenColor
     ) external {
         Game storage g = games[gameId];
         require(g.phase == Phase.Active, "phase");
-        require(g.players[g.turn] == msg.sender, "not your turn");
+        require(_current(g) == msg.sender, "not your turn");
 
-        euint8 chosen = hands[gameId][msg.sender][handIndex];
-        // 1) the attestation must correspond to THIS card handle
-        require(euint8.unwrap(chosen) == dec.handle, "handle mismatch");
-        // 2) covalidators must have signed the decryption
-        require(inco.incoVerifier().isValidDecryptionAttestation(dec, sigs), "bad attestation");
+        euint256[] storage hand = hands[gameId][msg.sender];
+        require(handIndex < hand.length, "bad index");
 
-        // 3) legality check on the revealed value vs current top discard
-        //    TODO: implement UNO match rules (color/value/wild) using dec.value
-        //    Optionally validate WITHOUT full reveal via attested-compute e.eq.
+        // Trustless reveal: the handle really is `claimedValue`.
+        require(_verifyValue(hand[handIndex], claimedValue, sigs), "value mismatch");
+        // UNO legality against the current pile.
+        require(UnoCards.isPlayable(claimedValue, g.topValue, g.activeColor), "illegal move");
 
-        // 4) apply: set top discard, remove card from hand, handle action cards
-        //    (skip/reverse/draw2/wild), advance turn by g.direction.
-        _removeFromHand(gameId, msg.sender, handIndex);
-        // g.topDiscard = <revealed card as euint8>;  // now public
-        emit CardPlayed(gameId, msg.sender);
+        // Remove the played card from the (still-secret) hand.
+        hand[handIndex] = hand[hand.length - 1];
+        hand.pop();
 
-        if (hands[gameId][msg.sender].length == 0) {
-            _finish(gameId, msg.sender);
+        // Update pile + active color.
+        g.topValue = claimedValue;
+        if (UnoCards.isWild(claimedValue)) {
+            require(chosenColor <= 3, "pick a color");
+            g.activeColor = chosenColor;
+        } else {
+            g.activeColor = UnoCards.decode(claimedValue).color;
+        }
+
+        emit CardPlayed(gameId, msg.sender, claimedValue, g.activeColor);
+
+        // Win check.
+        if (hand.length == 0) {
+            _finish(g, gameId, msg.sender);
+            return;
+        }
+
+        // Apply action-card effects on turn order, then advance.
+        _applyEffects(g, gameId, claimedValue);
+        _advance(g);
+    }
+
+    // ── Effects / turn order ──────────────────────────────────────────────────
+    function _applyEffects(Game storage g, uint256 gameId, uint256 value) internal {
+        UnoCards.Card memory card = UnoCards.decode(value);
+        if (card.kind == UnoCards.REVERSE) {
+            g.dir = int8(-g.dir);
+            if (g.players.length == 2) _advance(g); // reverse acts as skip in 2p
+        } else if (card.kind == UnoCards.SKIP) {
+            _advance(g); // skip next player (a second advance happens in caller)
+        } else if (card.kind == UnoCards.DRAW_TWO) {
+            address next = _peekNext(g);
+            for (uint8 i = 0; i < 2; i++) hands[gameId][next].push(_dealTo(next));
+            _advance(g); // penalized player loses their turn
+        } else if (card.kind == UnoCards.WILD_DRAW_FOUR) {
+            address next = _peekNext(g);
+            for (uint8 i = 0; i < 4; i++) hands[gameId][next].push(_dealTo(next));
+            _advance(g);
         }
     }
 
-    // ---- Settlement ---------------------------------------------------------
-    function _finish(uint256 gameId, address winner) internal {
-        Game storage g = games[gameId];
+    // ── Settlement ─────────────────────────────────────────────────────────────
+    function _finish(Game storage g, uint256 gameId, address winner) internal {
         g.phase = Phase.Finished;
         g.winner = winner;
         uint256 payout = g.pot;
-        // TODO: rake for Megapot jackpot (see docs/BUILD_PLAN.md). e.g.:
         // uint256 rake = payout * RAKE_BPS / 10_000; payout -= rake;
-        // megapot.buyTickets(rake, g.players);
+        // TODO(Megapot): buy jackpot tickets with `rake` for g.players (BUILD_PLAN).
         g.pot = 0;
         (bool ok, ) = winner.call{value: payout}("");
         require(ok, "payout");
         emit GameFinished(gameId, winner, payout);
     }
 
-    // ---- Internal helpers (TODO) -------------------------------------------
-    function _drawEncrypted(uint256 gameId) internal returns (euint8) {
-        // TODO: draw-without-replacement from encrypted deck, or ConfidentialDeck.
-        // Placeholder: fresh encrypted random card 0..53
-        gameId; // silence unused in skeleton
-        return e.rem(e.randEuint8(), 54);
+    // ── Turn helpers ────────────────────────────────────────────────────────────
+    function _current(Game storage g) internal view returns (address) {
+        return g.players[g.turn];
     }
 
-    function _revealTop(uint256 gameId) internal returns (euint8) {
-        // TODO: attested public decryption of the next deck card
-        return _drawEncrypted(gameId);
+    function _peekNext(Game storage g) internal view returns (address) {
+        uint256 n = g.players.length;
+        uint256 idx = (uint256(int256(g.turn) + g.dir) + n) % n;
+        return g.players[idx];
     }
 
-    function _removeFromHand(uint256 gameId, address p, uint256 idx) internal {
-        euint8[] storage h = hands[gameId][p];
-        h[idx] = h[h.length - 1];
-        h.pop();
+    function _advance(Game storage g) internal {
+        uint256 n = g.players.length;
+        g.turn = uint8((uint256(int256(g.turn) + g.dir) + n) % n);
     }
 }
