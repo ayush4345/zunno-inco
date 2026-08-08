@@ -14,10 +14,10 @@ contract Deploy is Script {
         uint256 pk = vm.envUint("PRIVATE_KEY");
         vm.startBroadcast(pk);
         game = new ZunnoInco();
-        uint256 fee = game.deckFee(108);
-        game.fundFees{value: fee}();
+        uint256 funding = game.deckFee(108) * 10;
+        game.fundFees{value: funding}();
         console2.log("ZunnoInco deployed:", address(game));
-        console2.log("Funded one shuffle fee:", fee);
+        console2.log("Funded ten shuffle fees:", funding);
         vm.stopBroadcast();
     }
 }
