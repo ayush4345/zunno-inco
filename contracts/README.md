@@ -1,39 +1,35 @@
 # contracts — Zunno × Inco
 
-Foundry project for **confidential UNO** built on Inco's **ConfidentialDeck** template.
+Foundry project for **confidential UNO** built on Inco's **ConfidentialDeck** kit.
 
-> Inco is **confidential compute for the EVM** (per Inco: *not FHE and not zk*). "Secret" = the value is decrypted by Inco; "provably fair" = a covalidator **attestation**. Hands stay secret on-chain; only played/showdown cards become public.
+> Inco is **confidential compute for the EVM** (per Inco: *not FHE and not zk*). "Secret" = decrypted by Inco; "provably fair" = a covalidator **attestation**. Hands stay secret on-chain; a card's value enters on-chain state only when someone submits an attestation.
 
-> ⚠️ WIP: plaintext UNO logic (`UnoCards.sol`, turns, legality) is complete and unit-tested. The confidential moves in `ZunnoInco.sol` depend on the ConfidentialDeck kit (below) — confirm method names/returns against the template before deploying.
+> ⚠️ WIP: not yet compiled in CI. Plaintext UNO logic (`UnoCards.sol`) is unit-tested. `ZunnoInco.sol` builds on the vendored kit and needs the Inco Lightning lib installed to compile.
 
 ## Files
+- `src/kit/ConfidentialDeck.sol` — **vendored** Inco kit (MIT): `deckFee`, `_newShuffledDeck`, `_draw`, `_dealTo`, `_revealCard`, `_dealFaceUp`, `_verifyValue`.
 - `src/UnoCards.sol` — pure card codec (108-card layout) + `isPlayable` legality. Fully testable.
-- `src/ZunnoInco.sol` — game contract; inherits `ConfidentialDeck`, uses the five moves (`_newShuffledDeck`, `_dealTo`, `_draw`, `_revealCard`/`_dealFaceUp`, `_verifyValue`).
+- `src/ZunnoInco.sol` — the game: shuffle → secret `_dealTo` hands → `commitOpening` (attested) → `playCard` (attested + legality) → action cards / turns → escrow payout.
 - `script/Deploy.s.sol` — Base Sepolia deploy.
 - `test/UnoCards.t.sol` — pure-logic unit tests (`forge test`).
+
+## Confidential flow (important)
+1. `startGame` shuffles one deck (singleton — one game at a time), deals 7 secret cards each via `_dealTo`, and flips an opener with `_dealFaceUp`.
+2. Frontend reads handles (`getMyHandHandles`, `getOpeningHandle`) and **user-decrypts** the player's own cards client-side.
+3. `commitOpening(value, sigs)` submits the opener's covalidator attestation to set the public top card.
+4. `playCard(handIndex, value, sigs, chosenColor)` submits the played card's attestation; `_verifyValue` binds value→handle (no lying), then `UnoCards.isPlayable` enforces the rules.
+5. Contract must hold ETH for shuffle fees — call `fundFees()` (or send ETH) before `startGame`.
 
 ## Setup
 ```bash
 forge install foundry-rs/forge-std
-
-# Vendor the ConfidentialDeck kit into src/kit/ (import is "./kit/ConfidentialDeck.sol")
-# from https://github.com/Inco-fhevm/confidential-deck-template
-# and install the Inco Lightning solidity lib, then fix remappings.txt.
-
-cp .env.example .env    # set BASE_SEPOLIA_RPC, PRIVATE_KEY
+# install the Inco Lightning solidity lib and fix the @inco/lightning remapping
+cp .env.example .env    # BASE_SEPOLIA_RPC, PRIVATE_KEY
 forge build
-forge test              # runs UnoCards logic tests (no Inco needed)
+forge test              # UnoCards logic tests (no Inco needed)
 ```
 
 ## Deploy (Base Sepolia)
 ```bash
 forge script script/Deploy.s.sol:Deploy --rpc-url base_sepolia --broadcast
 ```
-
-## The five confidential moves (from Inco ConfidentialDeck)
-| Move | Kit call | Use in Zunno |
-|---|---|---|
-| Shuffle | `_newShuffledDeck(108)` | new round |
-| Deal (private) | `_dealTo(player)` | secret 7-card hands + draws |
-| Reveal (public) | `_revealCard` / `_dealFaceUp` | open the discard pile |
-| Settle | `_verifyValue(card, value, sigs)` | validate a played card trustlessly |
