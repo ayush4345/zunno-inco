@@ -19,10 +19,15 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
 
     uint16 constant DECK = 108; // full UNO deck
     uint8 constant START_HAND = 7;
-    uint8 constant MAX_PLAYERS = 15; // 15 * 7 cards + opener fits one deck
+    uint256 public constant MAX_PLAYERS = 15; // 15 * 7 cards + opener fits one deck
     uint16 constant RAKE_BPS = 300; // 3% -> Megapot jackpot (see BUILD_PLAN)
 
-    enum Phase { Waiting, Opening, Active, Finished }
+    enum Phase {
+        Waiting,
+        Opening,
+        Active,
+        Finished
+    }
 
     struct Game {
         address[] players;
@@ -36,15 +41,43 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         address winner;
     }
 
+    struct Lobby {
+        address creator;
+        bool isPrivate;
+        bool isBot;
+        bytes32 gameCodeHash;
+        uint256 maxPlayers;
+        uint256 startTime;
+        uint256 endTime;
+    }
+
+    struct GameView {
+        uint256 id;
+        address creator;
+        address[] players;
+        uint8 status;
+        bool isPrivate;
+        bytes32 gameCodeHash;
+        uint256 maxPlayers;
+        uint256 startTime;
+        uint256 endTime;
+        bytes32 deckCommitment;
+        bytes32[] moveCommitments;
+    }
+
     uint256 public nextGameId;
     uint256 public feeBalance;
     bool public deckBusy; // true while a game holds the singleton deck
     mapping(uint256 => Game) public games;
+    mapping(uint256 => Lobby) public lobbies;
+    mapping(address => uint256[]) internal createdGames;
     mapping(uint256 => mapping(address => bool)) public seated;
     mapping(uint256 => mapping(address => euint256[])) internal hands;
     euint256 internal openingCard; // face-up opener handle awaiting commit
 
     event GameCreated(uint256 indexed gameId, address indexed creator, uint256 buyIn);
+    event GameCreated(uint256 indexed gameId, address indexed creator, bool isPrivate);
+    event GameDeleted(uint256 indexed gameId, address indexed creator);
     event PlayerJoined(uint256 indexed gameId, address indexed player);
     event GameStarted(uint256 indexed gameId);
     event OpeningCommitted(uint256 indexed gameId, uint256 value, uint8 activeColor);
@@ -52,39 +85,129 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
     event CardPlayed(uint256 indexed gameId, address indexed player, uint256 value, uint8 activeColor);
     event GameFinished(uint256 indexed gameId, address indexed winner, uint256 payout);
 
-    receive() external payable { feeBalance += msg.value; }
+    receive() external payable {
+        feeBalance += msg.value;
+    }
+
     /// @notice Pre-fund the contract so it can pay ConfidentialDeck shuffle fees.
-    function fundFees() external payable { feeBalance += msg.value; }
+    function fundFees() external payable {
+        feeBalance += msg.value;
+    }
 
     // ── Lobby / escrow ────────────────────────────────────────────────────────
     function createGame(uint256 buyIn) external payable returns (uint256 gameId) {
-        require(msg.value >= buyIn, "buy-in");
+        return _createGame(msg.sender, buyIn, msg.value, false, false, bytes32(0), MAX_PLAYERS);
+    }
+
+    function createGame(address creator, bool isBot) external returns (uint256 gameId) {
+        require(creator == msg.sender, "creator != sender");
+        return _createGame(creator, 0, 0, false, isBot, bytes32(0), isBot ? 2 : MAX_PLAYERS);
+    }
+
+    function createGame(address creator, bool isBot, bool isPrivate, bytes32 gameCodeHash, uint256 maxPlayers)
+        external
+        returns (uint256 gameId)
+    {
+        require(creator == msg.sender, "creator != sender");
+        return _createGame(creator, 0, 0, isPrivate, isBot, gameCodeHash, maxPlayers);
+    }
+
+    function _createGame(
+        address creator,
+        uint256 buyIn,
+        uint256 paid,
+        bool isPrivate,
+        bool isBot,
+        bytes32 gameCodeHash,
+        uint256 maxPlayers
+    ) internal returns (uint256 gameId) {
+        require(paid >= buyIn, "buy-in");
+        require(maxPlayers >= 2 && maxPlayers <= MAX_PLAYERS, "max players");
         gameId = ++nextGameId;
         Game storage g = games[gameId];
-        g.players.push(msg.sender);
-        seated[gameId][msg.sender] = true;
+        g.players.push(creator);
+        seated[gameId][creator] = true;
         g.buyIn = buyIn;
-        g.pot = msg.value;
+        g.pot = paid;
         g.dir = 1;
         g.phase = Phase.Waiting;
-        emit GameCreated(gameId, msg.sender, buyIn);
+        lobbies[gameId] = Lobby({
+            creator: creator,
+            isPrivate: isPrivate,
+            isBot: isBot,
+            gameCodeHash: gameCodeHash,
+            maxPlayers: maxPlayers,
+            startTime: 0,
+            endTime: 0
+        });
+        createdGames[creator].push(gameId);
+        emit GameCreated(gameId, creator, buyIn);
+        emit GameCreated(gameId, creator, isPrivate);
     }
 
     function joinGame(uint256 gameId) external payable {
+        _joinGame(gameId, msg.sender, msg.value);
+    }
+
+    function joinGame(uint256 gameId, address joinee) external payable {
+        require(joinee == msg.sender, "joinee != sender");
+        _joinGame(gameId, joinee, msg.value);
+    }
+
+    function joinGameWithCode(uint256 gameId, address joinee, string calldata gameCode) external payable {
+        require(joinee == msg.sender, "joinee != sender");
+        Lobby storage lobby = lobbies[gameId];
+        require(lobby.isPrivate, "not private");
+        require(keccak256(bytes(gameCode)) == lobby.gameCodeHash, "invalid game code");
+        _joinGame(gameId, joinee, msg.value);
+    }
+
+    function _joinGame(uint256 gameId, address player, uint256 paid) internal {
         Game storage g = games[gameId];
+        require(gameId != 0 && gameId <= nextGameId, "invalid game");
         require(g.phase == Phase.Waiting, "not joinable");
-        require(!seated[gameId][msg.sender], "already joined");
-        require(g.players.length < MAX_PLAYERS, "table full");
-        require(msg.value >= g.buyIn, "buy-in");
-        g.players.push(msg.sender);
-        seated[gameId][msg.sender] = true;
-        g.pot += msg.value;
-        emit PlayerJoined(gameId, msg.sender);
+        require(!lobbies[gameId].isBot, "bot game");
+        require(!seated[gameId][player], "already joined");
+        require(g.players.length < lobbies[gameId].maxPlayers, "table full");
+        require(paid >= g.buyIn, "buy-in");
+        g.players.push(player);
+        seated[gameId][player] = true;
+        g.pot += paid;
+        emit PlayerJoined(gameId, player);
+    }
+
+    function deleteGame(uint256 gameId) external nonReentrant {
+        Game storage g = games[gameId];
+        Lobby storage lobby = lobbies[gameId];
+        require(lobby.creator == msg.sender, "not creator");
+        require(g.phase == Phase.Waiting, "already started");
+
+        g.phase = Phase.Finished;
+        lobby.endTime = block.timestamp;
+        uint256 refund = g.pot;
+        g.pot = 0;
+
+        uint256[] storage ids = createdGames[msg.sender];
+        for (uint256 i = 0; i < ids.length; i++) {
+            if (ids[i] == gameId) {
+                ids[i] = ids[ids.length - 1];
+                ids.pop();
+                break;
+            }
+        }
+
+        if (refund != 0) {
+            (bool ok,) = msg.sender.call{value: refund}("");
+            require(ok, "refund");
+        }
+        emit GameDeleted(gameId, msg.sender);
     }
 
     // ── Start: shuffle, deal secret hands, flip opener face up ────────────────
     function startGame(uint256 gameId) external {
         Game storage g = games[gameId];
+        require(gameId != 0 && gameId <= nextGameId, "invalid game");
+        require(g.players[0] == msg.sender, "not creator");
         require(g.phase == Phase.Waiting, "phase");
         require(g.players.length >= 2, "need >=2 players");
         require(!deckBusy, "deck busy (one game at a time)");
@@ -103,6 +226,7 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         }
         openingCard = _dealFaceUp(); // public, but value learned via attestation
         g.phase = Phase.Opening;
+        lobbies[gameId].startTime = block.timestamp;
         emit GameStarted(gameId);
     }
 
@@ -111,7 +235,7 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
     function commitOpening(uint256 gameId, uint256 value, bytes[] calldata sigs, uint8 chosenColor) external {
         Game storage g = games[gameId];
         require(g.phase == Phase.Opening, "phase");
-        _verifyValue(openingCard, value, _copySigs(sigs)); // reverts if wrong
+        _verifyValue(openingCard, value, sigs); // reverts if wrong
         g.topValue = value;
         if (UnoCards.isWild(value)) {
             require(chosenColor <= 3, "pick a color");
@@ -138,13 +262,10 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
     ///         submits its value + covalidator sigs. `_verifyValue` binds the
     ///         value to the on-chain handle, so they cannot lie. `chosenColor`
     ///         (0..3) applies only when the played card is a wild.
-    function playCard(
-        uint256 gameId,
-        uint256 handIndex,
-        uint256 claimedValue,
-        bytes[] calldata sigs,
-        uint8 chosenColor
-    ) external nonReentrant {
+    function playCard(uint256 gameId, uint256 handIndex, uint256 claimedValue, bytes[] calldata sigs, uint8 chosenColor)
+        external
+        nonReentrant
+    {
         Game storage g = games[gameId];
         require(g.phase == Phase.Active, "phase");
         require(_current(g) == msg.sender, "not your turn");
@@ -152,7 +273,7 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         euint256[] storage hand = hands[gameId][msg.sender];
         require(handIndex < hand.length, "bad index");
 
-        _verifyValue(hand[handIndex], claimedValue, _copySigs(sigs)); // trustless reveal
+        _verifyValue(hand[handIndex], claimedValue, sigs); // trustless reveal
         require(UnoCards.isPlayable(claimedValue, g.topValue, g.activeColor), "illegal move");
 
         // remove played card from the (still-secret) hand
@@ -187,11 +308,15 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
             _advance(g); // skip next (caller advances again)
         } else if (card.kind == UnoCards.DRAW_TWO) {
             address next = _peekNext(g);
-            for (uint8 i = 0; i < 2; i++) hands[gameId][next].push(_dealTo(next));
+            for (uint8 i = 0; i < 2; i++) {
+                hands[gameId][next].push(_dealTo(next));
+            }
             _advance(g);
         } else if (card.kind == UnoCards.WILD_DRAW_FOUR) {
             address next = _peekNext(g);
-            for (uint8 i = 0; i < 4; i++) hands[gameId][next].push(_dealTo(next));
+            for (uint8 i = 0; i < 4; i++) {
+                hands[gameId][next].push(_dealTo(next));
+            }
             _advance(g);
         }
     }
@@ -199,13 +324,14 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
     // ── Settlement ─────────────────────────────────────────────────────────────
     function _finish(Game storage g, uint256 gameId, address winner) internal {
         g.phase = Phase.Finished;
+        lobbies[gameId].endTime = block.timestamp;
         g.winner = winner;
         deckBusy = false; // release the singleton deck
         uint256 payout = g.pot;
         // uint256 rake = payout * RAKE_BPS / 10_000; payout -= rake;
         // TODO(Megapot): buy jackpot tickets with `rake` for g.players (BUILD_PLAN).
         g.pot = 0;
-        (bool ok, ) = winner.call{value: payout}("");
+        (bool ok,) = winner.call{value: payout}("");
         require(ok, "payout");
         emit GameFinished(gameId, winner, payout);
     }
@@ -214,11 +340,100 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
     function getMyHandHandles(uint256 gameId) external view returns (bytes32[] memory out) {
         euint256[] storage hand = hands[gameId][msg.sender];
         out = new bytes32[](hand.length);
-        for (uint256 i = 0; i < hand.length; i++) out[i] = euint256.unwrap(hand[i]);
+        for (uint256 i = 0; i < hand.length; i++) {
+            out[i] = euint256.unwrap(hand[i]);
+        }
     }
 
     function getOpeningHandle() external view returns (bytes32) {
         return euint256.unwrap(openingCard);
+    }
+
+    /// @notice Public game state for the confidential frontend. Card values in
+    ///         each hand remain opaque and are exposed separately as handles.
+    function getGameState(uint256 gameId)
+        external
+        view
+        returns (
+            address[] memory players,
+            address currentPlayer,
+            uint8 turn,
+            int8 direction,
+            uint256 pot,
+            uint256 buyIn,
+            Phase phase,
+            uint256 topValue,
+            uint8 activeColor,
+            address winner
+        )
+    {
+        require(gameId != 0 && gameId <= nextGameId, "invalid game");
+        Game storage g = games[gameId];
+        return
+            (g.players, g.players[g.turn], g.turn, g.dir, g.pot, g.buyIn, g.phase, g.topValue, g.activeColor, g.winner);
+    }
+
+    function getGame(uint256 gameId) external view returns (GameView memory view_) {
+        require(gameId != 0 && gameId <= nextGameId, "invalid game");
+        Game storage g = games[gameId];
+        Lobby storage lobby = lobbies[gameId];
+        bytes32[] memory moves = new bytes32[](0);
+        view_ = GameView({
+            id: gameId,
+            creator: lobby.creator,
+            players: g.players,
+            status: g.phase == Phase.Waiting ? 0 : g.phase == Phase.Finished ? 2 : 1,
+            isPrivate: lobby.isPrivate,
+            gameCodeHash: lobby.gameCodeHash,
+            maxPlayers: lobby.maxPlayers,
+            startTime: lobby.startTime,
+            endTime: lobby.endTime,
+            deckCommitment: bytes32(0),
+            moveCommitments: moves
+        });
+    }
+
+    function getGameCount() external view returns (uint256) {
+        return nextGameId;
+    }
+
+    function getGamesByCreator(address creator) external view returns (uint256[] memory) {
+        return createdGames[creator];
+    }
+
+    function getNotStartedGames() external view returns (uint256[] memory) {
+        return _listGames(false, false);
+    }
+
+    function getPublicNotStartedGames() external view returns (uint256[] memory) {
+        return _listGames(false, true);
+    }
+
+    function getActiveGames() external view returns (uint256[] memory) {
+        return _listGames(true, false);
+    }
+
+    function isGamePrivate(uint256 gameId) external view returns (bool) {
+        return lobbies[gameId].isPrivate;
+    }
+
+    function _listGames(bool active, bool publicOnly) internal view returns (uint256[] memory out) {
+        uint256 count;
+        for (uint256 id = 1; id <= nextGameId; id++) {
+            Game storage g = games[id];
+            Lobby storage lobby = lobbies[id];
+            bool phaseMatches = active ? g.phase == Phase.Opening || g.phase == Phase.Active : g.phase == Phase.Waiting;
+            if (phaseMatches && (!publicOnly || (!lobby.isPrivate && !lobby.isBot))) count++;
+        }
+
+        out = new uint256[](count);
+        uint256 index;
+        for (uint256 id = 1; id <= nextGameId; id++) {
+            Game storage g = games[id];
+            Lobby storage lobby = lobbies[id];
+            bool phaseMatches = active ? g.phase == Phase.Opening || g.phase == Phase.Active : g.phase == Phase.Waiting;
+            if (phaseMatches && (!publicOnly || (!lobby.isPrivate && !lobby.isBot))) out[index++] = id;
+        }
     }
 
     // ── Turn helpers ────────────────────────────────────────────────────────────
@@ -237,10 +452,5 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
     function _nextTurn(Game storage g) internal view returns (uint8) {
         if (g.dir == 1) return uint8((uint256(g.turn) + 1) % g.players.length);
         return g.turn == 0 ? uint8(g.players.length - 1) : g.turn - 1;
-    }
-
-    function _copySigs(bytes[] calldata src) internal pure returns (bytes[] memory out) {
-        out = new bytes[](src.length);
-        for (uint256 i = 0; i < src.length; i++) out[i] = src[i];
     }
 }

@@ -48,7 +48,7 @@ abstract contract ConfidentialDeck {
         _revealCard(card);
     }
 
-    function _verifyValue(euint256 card, uint256 value, bytes[] memory sigs) internal view returns (uint256) {
+    function _verifyValue(euint256 card, uint256 value, bytes[] calldata sigs) internal view returns (uint256) {
         require(e.verifyDecryption(card, value, sigs), "bad attestation");
         return value;
     }

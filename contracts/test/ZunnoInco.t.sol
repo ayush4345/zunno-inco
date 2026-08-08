@@ -32,11 +32,13 @@ contract ZunnoIncoTest is IncoTest {
         vm.prank(bob);
         game.joinGame{value: 1 ether}(gameId);
 
+        vm.prank(alice);
         vm.expectRevert("fund shuffle fee via fundFees()");
         game.startGame(gameId);
 
         uint256 fee = game.deckFee(108);
         game.fundFees{value: fee}();
+        vm.prank(alice);
         game.startGame(gameId);
 
         assertEq(address(game).balance, 2 ether);
@@ -51,6 +53,41 @@ contract ZunnoIncoTest is IncoTest {
             assertFalse(inco.persistAllowed(hand[i], bob));
         }
         assertTrue(inco.isRevealed(game.getOpeningHandle()));
+    }
+
+    function testOnlyCreatorStartsAndGameStateListsPlayers() public {
+        vm.prank(alice);
+        uint256 gameId = game.createGame(0);
+        vm.prank(bob);
+        game.joinGame(gameId);
+
+        vm.prank(bob);
+        vm.expectRevert("not creator");
+        game.startGame(gameId);
+
+        (address[] memory players, address currentPlayer,,,,,,,,) = game.getGameState(gameId);
+        assertEq(players.length, 2);
+        assertEq(players[0], alice);
+        assertEq(players[1], bob);
+        assertEq(currentPlayer, alice);
+    }
+
+    function testPortedUiLobbyFunctionsKeepSenderAsIdentity() public {
+        vm.prank(alice);
+        uint256 publicId = game.createGame(alice, false, false, bytes32(0), 4);
+
+        vm.prank(bob);
+        game.joinGame(publicId, bob);
+
+        ZunnoInco.GameView memory view_ = game.getGame(publicId);
+        assertEq(view_.creator, alice);
+        assertEq(view_.players.length, 2);
+        assertEq(game.getPublicNotStartedGames()[0], publicId);
+        assertEq(game.getGamesByCreator(alice)[0], publicId);
+
+        vm.prank(bob);
+        vm.expectRevert("creator != sender");
+        game.createGame(alice, true);
     }
 
     function testReverseFromTurnZeroWrapsToLastPlayer() public {
