@@ -15,7 +15,7 @@ abstract contract ConfidentialDeck {
     uint16 internal drawIndex;
 
     /// @notice Fee for shuffledRange(1, n+1): range + shuffle.
-    function deckFee(uint16 n) public returns (uint256) {
+    function deckFee(uint16 n) public pure returns (uint256) {
         return 2 * inco.getEListFee(n, ETypes.Uint256);
     }
 

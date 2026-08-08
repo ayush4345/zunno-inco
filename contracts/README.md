@@ -4,7 +4,7 @@ Foundry project for **confidential UNO** built on Inco's **ConfidentialDeck** ki
 
 > Inco is **confidential compute for the EVM** (per Inco: *not FHE and not zk*). "Secret" = decrypted by Inco; "provably fair" = a covalidator **attestation**. Hands stay secret on-chain; a card's value enters on-chain state only when someone submits an attestation.
 
-> ⚠️ WIP: not yet compiled in CI. Plaintext UNO logic (`UnoCards.sol`) is unit-tested. `ZunnoInco.sol` builds on the vendored kit and needs the Inco Lightning lib installed to compile.
+> ⚠️ WIP: not audited. Plaintext UNO logic (`UnoCards.sol`) is unit-tested.
 
 ## Files
 - `src/kit/ConfidentialDeck.sol` — **vendored** Inco kit (MIT): `deckFee`, `_newShuffledDeck`, `_draw`, `_dealTo`, `_revealCard`, `_dealFaceUp`, `_verifyValue`.
@@ -22,11 +22,10 @@ Foundry project for **confidential UNO** built on Inco's **ConfidentialDeck** ki
 
 ## Setup
 ```bash
-forge install foundry-rs/forge-std
-# install the Inco Lightning solidity lib and fix the @inco/lightning remapping
+npm install
 cp .env.example .env    # BASE_SEPOLIA_RPC, PRIVATE_KEY
 forge build
-forge test              # UnoCards logic tests (no Inco needed)
+forge test
 ```
 
 ## Deploy (Base Sepolia)

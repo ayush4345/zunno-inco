@@ -26,8 +26,8 @@ Deadline: **Aug 14, 2026** (jam ends 8:59 PM PDT). Two tracks, up to **$10K**: I
 **Must-ship core:** D1–D5 (deal → play → win → payout, 2-player, confidential hands). Megapot = high-value add-on.
 
 ## Risks
-- FHE reveal latency → confine public decrypts to play/showdown; own-hand is fast.
-- Distinct-card dealing in FHE → use ConfidentialDeck shuffle, don't hand-roll.
+- Attested reveal latency → confine public decrypts to play/showdown; own-hand is fast.
+- Distinct confidential dealing → use ConfidentialDeck shuffle, don't hand-roll.
 - Gas + `inco.getFee()` → keep encrypted ops minimal; Base L2 keeps it cheap.
 - Scope → 2-player first; more seats only if stable.
 

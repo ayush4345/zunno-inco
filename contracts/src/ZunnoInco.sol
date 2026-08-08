@@ -2,6 +2,7 @@
 pragma solidity ^0.8.29;
 
 import {euint256, e} from "@inco/lightning/src/Lib.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {ConfidentialDeck} from "./kit/ConfidentialDeck.sol";
 import {UnoCards} from "./UnoCards.sol";
 
@@ -13,11 +14,12 @@ import {UnoCards} from "./UnoCards.sol";
 ///      only ONE game can be mid-deal at once. For the hackathon demo we run one
 ///      active table; `startGame` reshuffles and marks the deck busy until the
 ///      game finishes. Fund the contract for shuffle fees via `fundFees()`.
-contract ZunnoInco is ConfidentialDeck {
+contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
     using e for euint256;
 
     uint16 constant DECK = 108; // full UNO deck
     uint8 constant START_HAND = 7;
+    uint8 constant MAX_PLAYERS = 15; // 15 * 7 cards + opener fits one deck
     uint16 constant RAKE_BPS = 300; // 3% -> Megapot jackpot (see BUILD_PLAN)
 
     enum Phase { Waiting, Opening, Active, Finished }
@@ -35,8 +37,10 @@ contract ZunnoInco is ConfidentialDeck {
     }
 
     uint256 public nextGameId;
+    uint256 public feeBalance;
     bool public deckBusy; // true while a game holds the singleton deck
     mapping(uint256 => Game) public games;
+    mapping(uint256 => mapping(address => bool)) public seated;
     mapping(uint256 => mapping(address => euint256[])) internal hands;
     euint256 internal openingCard; // face-up opener handle awaiting commit
 
@@ -48,9 +52,9 @@ contract ZunnoInco is ConfidentialDeck {
     event CardPlayed(uint256 indexed gameId, address indexed player, uint256 value, uint8 activeColor);
     event GameFinished(uint256 indexed gameId, address indexed winner, uint256 payout);
 
-    receive() external payable {}
+    receive() external payable { feeBalance += msg.value; }
     /// @notice Pre-fund the contract so it can pay ConfidentialDeck shuffle fees.
-    function fundFees() external payable {}
+    function fundFees() external payable { feeBalance += msg.value; }
 
     // ── Lobby / escrow ────────────────────────────────────────────────────────
     function createGame(uint256 buyIn) external payable returns (uint256 gameId) {
@@ -58,6 +62,7 @@ contract ZunnoInco is ConfidentialDeck {
         gameId = ++nextGameId;
         Game storage g = games[gameId];
         g.players.push(msg.sender);
+        seated[gameId][msg.sender] = true;
         g.buyIn = buyIn;
         g.pot = msg.value;
         g.dir = 1;
@@ -68,8 +73,11 @@ contract ZunnoInco is ConfidentialDeck {
     function joinGame(uint256 gameId) external payable {
         Game storage g = games[gameId];
         require(g.phase == Phase.Waiting, "not joinable");
+        require(!seated[gameId][msg.sender], "already joined");
+        require(g.players.length < MAX_PLAYERS, "table full");
         require(msg.value >= g.buyIn, "buy-in");
         g.players.push(msg.sender);
+        seated[gameId][msg.sender] = true;
         g.pot += msg.value;
         emit PlayerJoined(gameId, msg.sender);
     }
@@ -80,9 +88,11 @@ contract ZunnoInco is ConfidentialDeck {
         require(g.phase == Phase.Waiting, "phase");
         require(g.players.length >= 2, "need >=2 players");
         require(!deckBusy, "deck busy (one game at a time)");
-        require(address(this).balance >= deckFee(DECK), "fund shuffle fee via fundFees()");
+        uint256 fee = deckFee(DECK);
+        require(feeBalance >= fee, "fund shuffle fee via fundFees()");
 
         deckBusy = true;
+        feeBalance -= fee;
         _newShuffledDeck(DECK);
 
         for (uint256 i = 0; i < g.players.length; i++) {
@@ -134,7 +144,7 @@ contract ZunnoInco is ConfidentialDeck {
         uint256 claimedValue,
         bytes[] calldata sigs,
         uint8 chosenColor
-    ) external {
+    ) external nonReentrant {
         Game storage g = games[gameId];
         require(g.phase == Phase.Active, "phase");
         require(_current(g) == msg.sender, "not your turn");
@@ -217,13 +227,16 @@ contract ZunnoInco is ConfidentialDeck {
     }
 
     function _peekNext(Game storage g) internal view returns (address) {
-        uint256 n = g.players.length;
-        return g.players[(uint256(int256(uint256(g.turn)) + g.dir) + n) % n];
+        return g.players[_nextTurn(g)];
     }
 
     function _advance(Game storage g) internal {
-        uint256 n = g.players.length;
-        g.turn = uint8((uint256(int256(uint256(g.turn)) + g.dir) + n) % n);
+        g.turn = _nextTurn(g);
+    }
+
+    function _nextTurn(Game storage g) internal view returns (uint8) {
+        if (g.dir == 1) return uint8((uint256(g.turn) + 1) % g.players.length);
+        return g.turn == 0 ? uint8(g.players.length - 1) : g.turn - 1;
     }
 
     function _copySigs(bytes[] calldata src) internal pure returns (bytes[] memory out) {
