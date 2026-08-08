@@ -4,7 +4,7 @@ Zunno uses **Inco Lightning 1.0.2** on Base Sepolia to keep the shuffled deck an
 
 Inco Lightning is **TEE-based confidential computing**, not FHE and not a zero-knowledge proof system. Solidity stores opaque `bytes32` handles (`euint256` and `elist`); Inco covalidators process their confidential values and sign decryptions that the contract can verify.
 
-Deployed contract: [`0x3700c4a1085E858FC798ba3e27b33f074647f51d`](https://sepolia.basescan.org/address/0x3700c4a1085E858FC798ba3e27b33f074647f51d)
+Deployed contract: [`0xaCB38F19bF126bDBB3C98bdaB80f532f5937F27f`](https://sepolia.basescan.org/address/0xaCB38F19bF126bDBB3C98bdaB80f532f5937F27f)
 
 ## What is private?
 
