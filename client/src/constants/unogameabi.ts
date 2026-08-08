@@ -148,7 +148,7 @@ export const unoGameABI = [
   {
     type: "function",
     name: "getOpeningHandle",
-    inputs: [],
+    inputs: [{ name: "gameId", type: "uint256" }],
     outputs: [{ name: "", type: "bytes32" }],
     stateMutability: "view",
   },

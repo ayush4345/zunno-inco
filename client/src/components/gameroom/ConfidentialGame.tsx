@@ -353,6 +353,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         address: contractAddress,
         abi: unoGameABI,
         functionName: "getOpeningHandle",
+        args: [gameId],
       });
       const attested = await attestRevealedCard(await getZap(), handle);
       const card = decodeUnoCard(attested.value);

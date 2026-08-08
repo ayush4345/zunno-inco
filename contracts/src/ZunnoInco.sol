@@ -10,10 +10,8 @@ import {UnoCards} from "./UnoCards.sol";
 /// @notice Hands are secret on-chain (ConfidentialDeck `_dealTo`). A card's
 ///         value only enters on-chain state when someone submits a covalidator
 ///         attestation (`_verifyValue`) — that's how "play" and "opening" work.
-/// @dev ConfidentialDeck holds a SINGLE shuffled deck (an `elist`) at a time, so
-///      only ONE game can be mid-deal at once. For the hackathon demo we run one
-///      active table; `startGame` reshuffles and marks the deck busy until the
-///      game finishes. Fund the contract for shuffle fees via `fundFees()`.
+/// @dev Every game owns an independent encrypted deck and draw cursor. Fund the
+///      contract for each shuffle via `fundFees()`.
 contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
     using e for euint256;
 
@@ -69,8 +67,6 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
 
     uint256 public nextGameId;
     uint256 public feeBalance;
-    bool public deckBusy; // true while a game holds the singleton deck
-    uint256 public deckGameId;
     mapping(uint256 => Game) public games;
     mapping(uint256 => Lobby) public lobbies;
     mapping(address => uint256[]) internal createdGames;
@@ -78,7 +74,7 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
     mapping(uint256 => mapping(address => euint256[])) internal hands;
     mapping(uint256 => uint16) public dealtCards;
     mapping(uint256 => bool) public openingReady;
-    euint256 internal openingCard; // face-up opener handle awaiting commit
+    mapping(uint256 => euint256) internal openingCards; // face-up opener awaiting commit
 
     event GameCreated(uint256 indexed gameId, address indexed creator, uint256 buyIn);
     event GameCreated(uint256 indexed gameId, address indexed creator, bool isPrivate);
@@ -216,14 +212,11 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         require(g.players[0] == msg.sender, "not creator");
         require(g.phase == Phase.Waiting, "phase");
         require(g.players.length >= 2, "need >=2 players");
-        require(!deckBusy, "deck busy (one game at a time)");
         uint256 fee = deckFee(DECK);
         require(feeBalance >= fee, "fund shuffle fee via fundFees()");
 
-        deckBusy = true;
-        deckGameId = gameId;
         feeBalance -= fee;
-        _newShuffledDeck(DECK);
+        _newShuffledDeck(gameId, DECK);
         g.phase = Phase.Opening;
         lobbies[gameId].startTime = block.timestamp;
         emit GameStarted(gameId);
@@ -244,13 +237,13 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
 
         while (cursor < end) {
             address player = g.players[cursor % uint16(g.players.length)];
-            hands[gameId][player].push(_dealTo(player));
+            hands[gameId][player].push(_dealTo(gameId, player));
             cursor++;
         }
         dealtCards[gameId] = cursor;
 
         if (cursor == total) {
-            openingCard = _dealFaceUp();
+            openingCards[gameId] = _dealFaceUp(gameId);
             openingReady[gameId] = true;
             emit CardsDealt(gameId);
         }
@@ -262,7 +255,7 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         Game storage g = games[gameId];
         require(g.phase == Phase.Opening, "phase");
         require(openingReady[gameId], "deal incomplete");
-        _verifyValue(openingCard, value, sigs); // reverts if wrong
+        _verifyValue(openingCards[gameId], value, sigs); // reverts if wrong
         g.topValue = value;
         if (UnoCards.isWild(value)) {
             require(chosenColor <= 3, "pick a color");
@@ -279,7 +272,7 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         Game storage g = games[gameId];
         require(g.phase == Phase.Active, "phase");
         require(_current(g) == msg.sender, "not your turn");
-        hands[gameId][msg.sender].push(_dealTo(msg.sender)); // secret to caller
+        hands[gameId][msg.sender].push(_dealTo(gameId, msg.sender)); // secret to caller
         emit CardDrawn(gameId, msg.sender);
         _advance(g); // house rule: drawing ends the turn (simple demo flow)
     }
@@ -336,13 +329,13 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         } else if (card.kind == UnoCards.DRAW_TWO) {
             address next = _peekNext(g);
             for (uint8 i = 0; i < 2; i++) {
-                hands[gameId][next].push(_dealTo(next));
+                hands[gameId][next].push(_dealTo(gameId, next));
             }
             _advance(g);
         } else if (card.kind == UnoCards.WILD_DRAW_FOUR) {
             address next = _peekNext(g);
             for (uint8 i = 0; i < 4; i++) {
-                hands[gameId][next].push(_dealTo(next));
+                hands[gameId][next].push(_dealTo(gameId, next));
             }
             _advance(g);
         }
@@ -353,8 +346,6 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         g.phase = Phase.Finished;
         lobbies[gameId].endTime = block.timestamp;
         g.winner = winner;
-        deckBusy = false; // release the singleton deck
-        deckGameId = 0;
         uint256 payout = g.pot;
         // uint256 rake = payout * RAKE_BPS / 10_000; payout -= rake;
         // TODO(Megapot): buy jackpot tickets with `rake` for g.players (BUILD_PLAN).
@@ -383,9 +374,9 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         }
     }
 
-    function getOpeningHandle() external view returns (bytes32) {
-        require(openingReady[deckGameId], "deal incomplete");
-        return euint256.unwrap(openingCard);
+    function getOpeningHandle(uint256 gameId) external view returns (bytes32) {
+        require(openingReady[gameId], "deal incomplete");
+        return euint256.unwrap(openingCards[gameId]);
     }
 
     function getDealProgress(uint256 gameId) external view returns (uint16 dealt, uint16 total, bool ready) {

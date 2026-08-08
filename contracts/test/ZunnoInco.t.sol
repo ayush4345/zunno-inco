@@ -66,7 +66,42 @@ contract ZunnoIncoTest is IncoTest {
         assertEq(handSizes.length, 2);
         assertEq(handSizes[0], 4);
         assertEq(handSizes[1], 4);
-        assertTrue(inco.isRevealed(game.getOpeningHandle()));
+        assertTrue(inco.isRevealed(game.getOpeningHandle(gameId)));
+    }
+
+    function testGamesUseIndependentDecks() public {
+        vm.startPrank(alice);
+        uint256 first = game.createGame(0);
+        uint256 second = game.createGame(0);
+        vm.stopPrank();
+        vm.startPrank(bob);
+        game.joinGame(first);
+        game.joinGame(second);
+        vm.stopPrank();
+
+        game.fundFees{value: game.deckFee(108) * 2}();
+        vm.startPrank(alice);
+        game.startGame(first);
+        game.startGame(second);
+        vm.stopPrank();
+
+        game.dealCards(first, 4);
+        (uint16 firstDealt,,) = game.getDealProgress(first);
+        (uint16 secondDealt,,) = game.getDealProgress(second);
+        assertEq(firstDealt, 4);
+        assertEq(secondDealt, 0);
+
+        game.dealCards(second, 4);
+        game.dealCards(first, 4);
+        game.dealCards(second, 4);
+
+        bytes32 firstOpening = game.getOpeningHandle(first);
+        bytes32 secondOpening = game.getOpeningHandle(second);
+        assertNotEq(firstOpening, secondOpening);
+        assertTrue(inco.isRevealed(firstOpening));
+        assertTrue(inco.isRevealed(secondOpening));
+        assertEq(game.getHandSizes(first)[0], 4);
+        assertEq(game.getHandSizes(second)[0], 4);
     }
 
     function testDealBatchIsBounded() public {

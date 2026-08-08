@@ -14,8 +14,8 @@ Foundry project for **confidential UNO** built on Inco's **ConfidentialDeck** ki
 - `test/UnoCards.t.sol` — pure-logic unit tests (`forge test`).
 
 ## Confidential flow (important)
-1. `startGame` shuffles one deck (singleton — one game at a time), deals 7 secret cards each via `_dealTo`, and flips an opener with `_dealFaceUp`.
-2. Frontend reads handles (`getMyHandHandles`, `getOpeningHandle`) and **user-decrypts** the player's own cards client-side.
+1. `startGame` creates an independent encrypted deck for that `gameId`; batched calls deal 4 secret cards each via `_dealTo` and flip that game's opener with `_dealFaceUp`.
+2. Frontend reads handles (`getMyHandHandles(gameId)`, `getOpeningHandle(gameId)`) and **user-decrypts** the player's own cards client-side.
 3. `commitOpening(value, sigs)` submits the opener's covalidator attestation to set the public top card.
 4. `playCard(handIndex, value, sigs, chosenColor)` submits the played card's attestation; `_verifyValue` binds value→handle (no lying), then `UnoCards.isPlayable` enforces the rules.
 5. Contract must hold ETH for shuffle fees — call `fundFees()` (or send ETH) before `startGame`.

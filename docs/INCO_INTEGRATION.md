@@ -115,7 +115,7 @@ Range creation and shuffle consume Inco fees. [`deckFee`](../contracts/src/kit/C
 [`_draw`](../contracts/src/kit/ConfidentialDeck.sol#L29) extracts the next confidential card handle and preserves contract access with `e.allowThis(card)`. [`_dealTo`](../contracts/src/kit/ConfidentialDeck.sol#L36) then grants only the receiving player permission:
 
 ```solidity
-card = _draw();
+card = _draw(gameId);
 e.allow(card, player);
 ```
 
@@ -169,7 +169,7 @@ Because removal uses swap-and-pop, the client must re-fetch hand handles after e
 
 ### 6. Draws and action cards
 
-[`drawCard`](../contracts/src/ZunnoInco.sol#L251), Draw Two, and Wild Draw Four all call `_dealTo(player)`. New cards therefore remain confidential and are immediately decryptable only by their owner. Drawing ends the turn in the current contract rules.
+[`drawCard`](../contracts/src/ZunnoInco.sol#L251), Draw Two, and Wild Draw Four all call `_dealTo(gameId, player)`. New cards therefore remain confidential and are immediately decryptable only by their owner. Drawing ends the turn in the current contract rules.
 
 ### 7. Settlement
 
@@ -188,7 +188,7 @@ When a verified play empties the caller's on-chain hand, `_finish` records that 
 - Inco relies on its TEE/covalidator security model; this is not a zk proof.
 - Player addresses, turns, action timing, card counts inferred from actions, top card, chosen color, pot, and winner are public.
 - A compromised browser can leak its own player's decrypted hand.
-- `ConfidentialDeck` currently owns one singleton deck, so `deckBusy` permits only one active confidential game at a time.
+- Each `gameId` owns an independent encrypted deck, draw cursor, opening handle, and player hands, so tables can run concurrently.
 - Once a card value is submitted to `playCard`, it is public transaction data.
 
 ## Current integration status

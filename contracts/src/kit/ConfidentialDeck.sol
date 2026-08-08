@@ -11,30 +11,36 @@ abstract contract ConfidentialDeck {
     using e for euint256;
     using e for elist;
 
-    elist internal deck;
-    uint16 internal drawIndex;
+    struct DeckState {
+        elist cards;
+        uint16 drawIndex;
+    }
+
+    mapping(uint256 => DeckState) internal decks;
 
     /// @notice Fee for shuffledRange(1, n+1): range + shuffle.
     function deckFee(uint16 n) public pure returns (uint256) {
         return 2 * inco.getEListFee(n, ETypes.Uint256);
     }
 
-    function _newShuffledDeck(uint16 n) internal {
+    function _newShuffledDeck(uint256 gameId, uint16 n) internal {
         require(n > 0, "empty deck");
-        deck = e.shuffledRange(1, n + 1, ETypes.Uint256);
-        e.allow(deck, address(this));
-        drawIndex = 0;
+        DeckState storage state = decks[gameId];
+        state.cards = e.shuffledRange(1, n + 1, ETypes.Uint256);
+        e.allow(state.cards, address(this));
+        state.drawIndex = 0;
     }
 
-    function _draw() internal returns (euint256 card) {
-        require(drawIndex < e.length(deck), "deck empty");
-        card = e.getEuint256(deck, drawIndex);
-        drawIndex += 1;
+    function _draw(uint256 gameId) internal returns (euint256 card) {
+        DeckState storage state = decks[gameId];
+        require(state.drawIndex < e.length(state.cards), "deck empty");
+        card = e.getEuint256(state.cards, state.drawIndex);
+        state.drawIndex += 1;
         e.allowThis(card);
     }
 
-    function _dealTo(address player) internal returns (euint256 card) {
-        card = _draw();
+    function _dealTo(uint256 gameId, address player) internal returns (euint256 card) {
+        card = _draw(gameId);
         e.allow(card, player);
     }
 
@@ -43,8 +49,8 @@ abstract contract ConfidentialDeck {
         e.reveal(card);
     }
 
-    function _dealFaceUp() internal returns (euint256 card) {
-        card = _draw();
+    function _dealFaceUp(uint256 gameId) internal returns (euint256 card) {
+        card = _draw(gameId);
         _revealCard(card);
     }
 
