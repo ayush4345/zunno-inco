@@ -19,6 +19,9 @@ const bbNodeDir = resolve(bbPkgDir, 'dest', 'node');
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+    // lightning-js includes valid bitwise math that crashes this Next 14 SWC minifier.
+    swcMinify: false,
+
     // Enable server external packages for Noir/BB
     // These packages will be kept external during SSR
     experimental: {

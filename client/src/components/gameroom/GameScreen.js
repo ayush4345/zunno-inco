@@ -13,10 +13,10 @@ const GameScreen = ({
   turn,
   player1Deck,
   player2Deck,
-  player3Deck = [],
-  player4Deck = [],
-  player5Deck = [],
-  player6Deck = [],
+  player3Deck = /** @type {string[]} */ ([]),
+  player4Deck = /** @type {string[]} */ ([]),
+  player5Deck = /** @type {string[]} */ ([]),
+  player6Deck = /** @type {string[]} */ ([]),
   playerCount = 2,
   onUnoClicked,
   playedCardsPile,
@@ -26,6 +26,8 @@ const GameScreen = ({
   onSkipButtonHandler,
   isComputerMode = false,
   isExtraTurn = false,
+  turnTimerEnabled = true,
+  actionsDisabled = false,
 }) => {
   // Get all player decks in an object
   const allPlayerDecks = {
@@ -92,6 +94,8 @@ const GameScreen = ({
       turnTimerRef.current = null;
     }
 
+    if (!turnTimerEnabled) return;
+
     // Start new timer
     turnTimerRef.current = setInterval(() => {
       setTurnTimeRemaining(prev => {
@@ -129,7 +133,7 @@ const GameScreen = ({
       }
     };
   // Only reset timer when turn or game state changes, not when Uno button is clicked
-  }, [turn, currentUser, drawButtonPressed, unoClicked, isExtraTurn]);  // Added unoClicked and isExtraTurn to dependencies
+  }, [turn, currentUser, drawButtonPressed, unoClicked, isExtraTurn, turnTimerEnabled]);  // Added unoClicked and isExtraTurn to dependencies
 
   // Effect for skip timer
   useEffect(() => {
@@ -308,7 +312,7 @@ const GameScreen = ({
               >
                 {isComputerMode && opponent.name === "Player 2"
                   ? `Computing... (${turnTimeRemaining}s)`
-                  : `Thinking... (${turnTimeRemaining}s)`}
+                  : turnTimerEnabled ? `Thinking... (${turnTimeRemaining}s)` : "Playing…"}
               </div>
               <div
                 className="avatar-container"
@@ -405,10 +409,10 @@ const GameScreen = ({
             }}
           >
             <CommonView
-              isDrawDisabled={turn !== currentUser}
+              isDrawDisabled={turn !== currentUser || actionsDisabled}
               playedCardsPile={playedCardsPile}
               onCardDrawnHandler={onCardDrawnHandler}
-              isUnoDisabled={turn !== currentUser || playerDeck.length !== 2}
+              isUnoDisabled={turn !== currentUser || playerDeck.length !== 2 || actionsDisabled}
               onUnoClicked={() => {
                 setUnoClicked(true);
                 // Clear the turn timer when Uno is clicked
@@ -555,13 +559,15 @@ const GameScreen = ({
                     visibility: turn === currentUser ? "visible" : "hidden",
                   }}
                 >
-                  {Math.floor(turnTimeRemaining / 60).toString().padStart(2, '0')}:{(turnTimeRemaining % 60).toString().padStart(2, '0')}
+                  {turnTimerEnabled
+                    ? `${Math.floor(turnTimeRemaining / 60).toString().padStart(2, '0')}:${(turnTimeRemaining % 60).toString().padStart(2, '0')}`
+                    : "YOUR TURN"}
                 </div>
               </div>
             </div>
           </div>
           <MainPlayerView
-            turn={turn}
+            turn={actionsDisabled ? "" : turn}
             mainPlayer={currentUser}
             playerDeck={playerDeck}
             onCardPlayedHandler={onCardPlayedHandler}

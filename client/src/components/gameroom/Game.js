@@ -9,18 +9,8 @@ import { useSoundProvider } from "../../context/SoundProvider";
 import ColourDialog from "./colourDialog";
 import { useToast } from "@/components/ui/use-toast";
 import { Toaster } from "@/components/ui/toaster";
-import { useWalletAddress } from "@/utils/onchainWalletUtils";
-import { ethers } from "ethers";
-import { encodeFunctionData } from "viem";
 import { useSocketConnection } from "@/context/SocketConnectionContext";
 import { MAX_PLAYERS } from "@/constants/gameConstants";
-import { unoGameABI } from "@/constants/unogameabi";
-import {
-  getContractAddress,
-  isSupportedChain,
-  getSupportedChainIds,
-} from "@/config/networks";
-import { useSendTransaction, useWaitForTransactionReceipt } from "wagmi";
 
 // Card codes: SKIP=100, DRAW2=200, DRAW4=400, WILD=500
 const checkGameOver = (deck) => deck.length === 1;
@@ -95,30 +85,12 @@ const Game = ({
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [dialogCallback, setDialogCallback] = useState(null);
-  const [rewardGiven, setRewardGiven] = useState(false);
   const [computerMoveCounter, setComputerMoveCounter] = useState(0);
-
-  // Hardcoded to Base Sepolia only
-  const chainId = 84532;
-
-  // Wagmi hooks for browser wallet transactions
-  const {
-    sendTransaction,
-    data: txHash,
-    isPending: isTxPending,
-  } = useSendTransaction();
-  const { isLoading: isConfirming, isSuccess: isConfirmed } =
-    useWaitForTransactionReceipt({
-      hash: txHash,
-    });
 
   // Connection status tracking
   const { isConnected: socketConnected, isReconnecting } =
     useSocketConnection();
   const pendingActionsRef = useRef([]);
-
-  const { address, isConnected } = useWalletAddress();
-
 
   const {
     gameOver,
@@ -726,118 +698,6 @@ const Game = ({
       ? dispatch(update)
       : emitSocketEvent("updateGameState", update);
   };
-
-  // Handle winner reward and blockchain transaction
-  const handleWinnerReward = async (winnerName) => {
-    if (rewardGiven) return;
-
-    if (!address || !isConnected) {
-      toast({
-        title: "Wallet Required",
-        description: "A connected wallet is required to receive your reward.",
-        variant: "destructive",
-        duration: 5000,
-      });
-      return;
-    }
-
-    const isCurrentUserWinner = winnerName === currentUser;
-    if (!isCurrentUserWinner) return;
-
-    setRewardGiven(true);
-
-    try {
-      const gameResultData = {
-        winnerAddress: address,
-        winnerPlayer: winnerName,
-        loserPlayers: getActivePlayers().filter((p) => p !== winnerName),
-        gameId: room,
-        timestamp: Date.now(),
-      };
-
-      const gameHash = ethers.keccak256(
-        ethers.toUtf8Bytes(JSON.stringify(gameResultData))
-      );
-
-      // Use wagmi transaction
-        if (!isSupportedChain(chainId)) {
-          throw new Error(
-            `Unsupported network! Please switch to a supported network. Current chain: ${chainId}, Supported: ${getSupportedChainIds().join(
-              ", "
-            )}`
-          );
-        }
-
-        const contractAddress = getContractAddress(chainId);
-
-        if (!contractAddress) {
-          throw new Error("Contract address not configured");
-        }
-
-        const data = encodeFunctionData({
-          abi: unoGameABI,
-          functionName: "endGame",
-          args: [BigInt(room), gameHash],
-        });
-
-        toast({
-          title: "Transaction Pending",
-          description: "Please confirm the transaction in your wallet...",
-          variant: "default",
-          duration: 5000,
-        });
-
-        // Send transaction using wagmi
-        sendTransaction({
-          to: contractAddress,
-          data: data,
-        });
-
-        // Note: Transaction confirmation is handled by the useEffect below
-    } catch (error) {
-      console.error("Failed to end game on blockchain:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      toast({
-        title: "Blockchain Update Failed",
-        description: `Issue recording game on blockchain: ${errorMessage}`,
-        variant: "warning",
-        duration: 5000,
-      });
-    }
-  };
-
-  // Handle browser wallet transaction confirmation
-  useEffect(() => {
-    if (isConfirming) {
-      toast({
-        title: "Transaction Confirming",
-        description: "Waiting for blockchain confirmation...",
-        variant: "default",
-        duration: 5000,
-      });
-    }
-
-    if (isConfirmed) {
-      toast({
-        title: "Game Ended on Blockchain",
-        description: "Game recorded successfully on Base Sepolia.",
-        variant: "success",
-        duration: 5000,
-      });
-
-      toast({
-        title: "Congratulations!",
-        description: "You've won the game!",
-        variant: "success",
-        duration: 5000,
-      });
-    }
-  }, [isConfirming, isConfirmed]);
-
-  useEffect(() => {
-    if (gameOver && winner && !rewardGiven) handleWinnerReward(winner);
-  }, [gameOver, winner, rewardGiven]);
 
   return (
     <div

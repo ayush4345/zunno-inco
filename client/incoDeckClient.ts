@@ -12,11 +12,12 @@ import { bytesToHex, type Account, type Chain, type Transport, type WalletClient
 export type ConnectedWalletClient = WalletClient<Transport, Chain, Account>;
 
 // ── Zap (Inco client) ───────────────────────────────────────────────────────
-export async function getZap(rpcUrl?: string) {
+let baseSepoliaZap: ReturnType<typeof Lightning.baseSepoliaTestnet> | undefined;
+
+export function getZap(rpcUrl?: string) {
   // For Base mainnet use Lightning.baseMainnet(). Pass your own RPC for reliability.
-  return Lightning.baseSepoliaTestnet(
-    rpcUrl ? { hostChainRpcUrls: [rpcUrl] } : undefined
-  );
+  if (rpcUrl) return Lightning.baseSepoliaTestnet({ hostChainRpcUrls: [rpcUrl] });
+  return baseSepoliaZap ??= Lightning.baseSepoliaTestnet();
 }
 
 export const BASE_SEPOLIA = supportedChains.baseSepolia;
@@ -66,6 +67,15 @@ export async function attestCard(
   return toAttestedValue(result);
 }
 
+export async function attestRevealedCard(
+  zap: Awaited<ReturnType<typeof getZap>>,
+  handle: HexString
+): Promise<AttestedValue> {
+  const [result] = await zap.attestedReveal([handle], DECRYPT_OPTIONS);
+  if (!result) throw new Error("public card attestation was not returned");
+  return toAttestedValue(result);
+}
+
 // ── UNO card codec (mirror of contracts/src/UnoCards.sol) ─────────────────────
 export type Kind = "number" | "skip" | "reverse" | "drawTwo" | "wild" | "wildDraw4";
 export const COLORS = ["Red", "Yellow", "Green", "Blue", "Wild"] as const;
@@ -100,6 +110,20 @@ export function decodeUnoCard(value: number | bigint): UnoCard {
     : kind === "reverse" ? `${cname} Reverse`
     : `${cname} +2`;
   return { color, kind, number, label };
+}
+
+const COLOR_CODES = ["R", "Y", "G", "B"] as const;
+
+/** Map the contract codec to the existing card artwork filenames. */
+export function cardAsset(card: UnoCard): string {
+  if (card.kind === "wild") return "W";
+  if (card.kind === "wildDraw4") return "D4W";
+  const color = COLOR_CODES[card.color];
+  if (!color) throw new Error("card color out of range");
+  if (card.kind === "skip") return `skip${color}`;
+  if (card.kind === "reverse") return `_${color}`;
+  if (card.kind === "drawTwo") return `D2${color}`;
+  return `${card.number}${color}`;
 }
 
 // ── High-level: read + peek your hand ─────────────────────────────────────────
