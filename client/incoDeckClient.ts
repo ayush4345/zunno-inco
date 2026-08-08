@@ -8,6 +8,7 @@
 import { Lightning } from "@inco/lightning-js/lite";
 import { supportedChains, type HexString } from "@inco/lightning-js";
 import { bytesToHex, type Account, type Chain, type Transport, type WalletClient } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 export type ConnectedWalletClient = WalletClient<Transport, Chain, Account>;
 
@@ -23,7 +24,7 @@ export function getZap(rpcUrl?: string) {
 export const BASE_SEPOLIA = supportedChains.baseSepolia;
 
 type IncoWalletClient = Parameters<
-  Awaited<ReturnType<typeof getZap>>["attestedDecrypt"]
+  Awaited<ReturnType<typeof getZap>>["grantSessionKeyAllowanceVoucher"]
 >[0];
 
 // lightning-js pins an older viem minor; the connected client is runtime-compatible.
@@ -44,6 +45,33 @@ const DECRYPT_OPTIONS = {
   backoffConfig: { maxRetries: 12, baseDelayInMs: 350, backoffFactor: 1.4 },
 } as const;
 
+const DEFAULT_SESSION_VERIFIER = "0xc34569efc25901bdd6b652164a2c8a7228b23005";
+const HAND_SESSION_MS = 10 * 60 * 1000;
+type Zap = Awaited<ReturnType<typeof getZap>>;
+type IncoSessionAccount = Parameters<Zap["attestedDecryptWithVoucher"]>[0];
+
+export interface HandDecryptSession {
+  account: IncoSessionAccount;
+  voucher: Awaited<ReturnType<Zap["grantSessionKeyAllowanceVoucher"]>>;
+  expiresAt: number;
+}
+
+export async function createHandDecryptSession(
+  zap: Zap,
+  wallet: ConnectedWalletClient,
+): Promise<HandDecryptSession> {
+  const account = privateKeyToAccount(generatePrivateKey()) as unknown as IncoSessionAccount;
+  const expiresAt = Date.now() + HAND_SESSION_MS;
+  const voucher = await zap.grantSessionKeyAllowanceVoucher(
+    asIncoWallet(wallet),
+    account.address,
+    new Date(expiresAt),
+    DEFAULT_SESSION_VERIFIER,
+  );
+  // ponytail: default verifier is broad; keep its key memory-only and expire it quickly.
+  return { account, voucher, expiresAt };
+}
+
 function toAttestedValue(result: {
   plaintext: { value: bigint | boolean };
   covalidatorSignatures: Uint8Array[];
@@ -55,16 +83,6 @@ function toAttestedValue(result: {
     value: result.plaintext.value,
     signatures: result.covalidatorSignatures.map((signature) => bytesToHex(signature)),
   };
-}
-
-export async function attestCard(
-  zap: Awaited<ReturnType<typeof getZap>>,
-  wallet: ConnectedWalletClient,
-  handle: HexString
-): Promise<AttestedValue> {
-  const [result] = await zap.attestedDecrypt(asIncoWallet(wallet), [handle], DECRYPT_OPTIONS);
-  if (!result) throw new Error("card attestation was not returned");
-  return toAttestedValue(result);
 }
 
 export async function attestRevealedCard(
@@ -129,12 +147,17 @@ export function cardAsset(card: UnoCard): string {
 // ── High-level: read + peek your hand ─────────────────────────────────────────
 // `readHandHandles` should call the contract view getMyHandHandles(gameId).
 export async function peekMyHand(
-  zap: Awaited<ReturnType<typeof getZap>>,
-  wallet: ConnectedWalletClient,
-  handles: HexString[]
+  zap: Zap,
+  handles: HexString[],
+  session: HandDecryptSession,
 ): Promise<Array<{ handle: HexString; card: UnoCard; attested: AttestedValue }>> {
   if (handles.length === 0) return [];
-  const results = await zap.attestedDecrypt(asIncoWallet(wallet), handles, DECRYPT_OPTIONS);
+  const results = await zap.attestedDecryptWithVoucher(
+    session.account,
+    session.voucher,
+    handles,
+    DECRYPT_OPTIONS,
+  );
   if (results.length !== handles.length) throw new Error("incomplete hand attestation");
   return results.map((result) => {
     const attested = toAttestedValue(result);

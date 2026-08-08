@@ -11,11 +11,13 @@ import {
 import {
   attestRevealedCard,
   cardAsset,
+  createHandDecryptSession,
   decodeUnoCard,
   getZap,
   peekMyHand,
   type AttestedValue,
   type ConnectedWalletClient,
+  type HandDecryptSession,
   type UnoCard,
 } from "../../../incoDeckClient";
 import { unoGameABI } from "@/constants/unogameabi";
@@ -81,6 +83,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   const [error, setError] = useState<string | null>(null);
   const [pendingColor, setPendingColor] = useState<PendingColor | null>(null);
   const cardCache = useRef(new Map<string, PeekedCard>());
+  const handSession = useRef<HandDecryptSession | null>(null);
 
   const isPlayer = useCallback(
     (players: readonly string[]) =>
@@ -171,11 +174,20 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
       );
       if (missing.length) {
         const zap = await getZap();
-        const revealed = await peekMyHand(
-          zap,
-          walletClient as ConnectedWalletClient,
-          missing,
-        );
+        const wallet = walletClient as ConnectedWalletClient;
+        let session = handSession.current;
+        if (!session || session.expiresAt <= Date.now()) {
+          setBusy("Authorize a 10-minute private-hand session…");
+          session = await createHandDecryptSession(zap, wallet);
+          handSession.current = session;
+        }
+        let revealed;
+        try {
+          revealed = await peekMyHand(zap, missing, session);
+        } catch (cause) {
+          handSession.current = null;
+          throw cause;
+        }
         revealed.forEach((card) => {
           cardCache.current.set(card.handle.toLowerCase(), {
             ...card,
@@ -238,10 +250,15 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
 
   useEffect(() => {
     cardCache.current.clear();
+    handSession.current = null;
     setHandles([]);
     setHand([]);
     setNeedsDecrypt(false);
   }, [address, gameId]);
+
+  useEffect(() => {
+    if (game?.phase === PHASE.finished) handSession.current = null;
+  }, [game?.phase]);
 
   useEffect(() => {
     void getZap().catch(() => undefined);

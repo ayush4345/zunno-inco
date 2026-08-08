@@ -43,8 +43,8 @@ flowchart LR
     Handles <-->|confidential operations| TEE
     Game -->|allow card to owner| Handles
     UI -->|read hand handles| Game
-    Wallet -->|authorize private decrypt| SDK
-    SDK -->|attestedDecrypt handles| TEE
+    Wallet -->|sign 10-minute voucher once| SDK
+    SDK -->|attestedDecryptWithVoucher handles| TEE
     TEE -->|plaintext plus signatures| SDK
     SDK -->|playCard index, value, signatures| Game
     Game -->|verifyDecryption| Verify
@@ -79,9 +79,10 @@ sequenceDiagram
     Player->>Game: commitOpening(value, signatures, color)
     Game->>Inco: verifyDecryption(opening handle, value, signatures)
 
+    Player->>Inco: sign 10-minute allowance voucher once
     loop Each turn
         Player->>Game: getMyHandHandles(gameId)
-        Player->>Inco: attestedDecrypt(wallet, handles)
+        Player->>Inco: attestedDecryptWithVoucher(session, handles)
         Inco-->>Player: private values + signatures
         alt Play
             Player->>Game: playCard(index, value, signatures, color)
@@ -122,19 +123,21 @@ e.allow(card, player);
 
 ### 3. Player peeks at their hand
 
-[`getMyHandHandles`](../contracts/src/ZunnoInco.sol#L340) returns only `hands[gameId][msg.sender]`. The browser passes those handles as an array to [`zap.attestedDecrypt`](../client/incoDeckClient.ts#L107):
+[`getMyHandHandles`](../contracts/src/ZunnoInco.sol#L340) returns only `hands[gameId][msg.sender]`. The browser creates an ephemeral account, asks the wallet to sign a ten-minute allowance voucher once, then passes the handles to [`zap.attestedDecryptWithVoucher`](../client/incoDeckClient.ts):
 
 ```ts
-const results = await zap.attestedDecrypt(walletClient, handles, options);
+const results = await zap.attestedDecryptWithVoucher(session.account, session.voucher, handles, options);
 ```
 
-The wallet authorization identifies the player. Inco checks the handle permission and returns:
+The session key and voucher stay in memory and are discarded when the wallet, game, or finished state changes. Inco checks the delegated permission and returns:
 
 - the plaintext card value;
 - the original handle;
 - covalidator signatures over that decryption.
 
 Another player is not allowed to decrypt those handles. The Foundry test verifies that each hand handle is allowed to its owner and the contract, but not the opponent.
+
+The default verifier delegates access to every Inco handle owned by the signer, including handles from unrelated apps. The SDK therefore includes Inco's mandatory warning in the wallet prompt; the client limits exposure with a short expiry and never logs or persists the voucher.
 
 ### 4. Public opening card
 
@@ -196,7 +199,7 @@ When a verified play empties the caller's on-chain hand, `_finish` records that 
 | Confidential shuffle/deal/access control | Complete | `ConfidentialDeck.sol` |
 | Attestation verification in opener/play | Complete | `_verifyValue` in `commitOpening` and `playCard` |
 | Base Sepolia deployment and initial fee funding | Complete | deployed contract above |
-| Private-hand client helper | Complete | `ConfidentialGame.tsx` calls `peekMyHand` for the connected player |
+| Private-hand client helper | Complete | `ConfidentialGame.tsx` reuses a ten-minute allowance voucher for the connected player |
 | Public opener helper | Complete | `attestRevealedCard` uses `attestedReveal` |
 | Existing visual UI | Preserved | no layout/component redesign |
 | End-to-end confidential UI game | Complete | multiplayer actions route through `ConfidentialGame.tsx` and `ZunnoInco` |
