@@ -1,15 +1,22 @@
 # client — Zunno × Inco (frontend)
 
-Reuse the existing React client from **Khel-fun/ZunnoGame** (`main-v-02` → `/client`) and add Inco confidentiality.
+Reuse the existing React client from **Khel-fun/ZunnoGame** (`main-v-02` → `/client`) and add the confidential layer via **`@inco/lightning-js`**.
+
+## What's here
+- `incoDeckClient.ts` — the Inco bridge: `getZap()`, `attestCard()` (user-decrypt a handle → value + covalidator sigs), `peekMyHand()`, and `decodeUnoCard()` (mirrors `contracts/src/UnoCards.sol` so the UI can render cards). **WIP:** confirm SDK method names against docs.inco.org (js-sdk → attestations).
 
 ## Port steps
-1. Copy `ZunnoGame/client` here (UI, game board, wallet connect).
-2. Add `@inco/lightning-js`:
-   - **Encrypt inputs** before sending on-chain (`zap.encrypt(...)`).
-   - **User-decrypt own hand** client-side (fast, private) for the `allow`ed player.
-3. On **play**, request an **attested decryption** of the chosen card and submit it to `playCard(...)`.
-4. UX: show a "revealing…" state during public decryptions (play / showdown / first discard) since covalidator consensus adds ~10–30s.
+1. Copy `ZunnoGame/client` here (board, lobby, wallet connect). Keep Socket.io for snappy turns.
+2. `npm i @inco/lightning-js viem`.
+3. Wire the confidential flow (see below).
+
+## Confidential game flow (frontend ↔ ZunnoInco.sol)
+1. **See your hand:** read handles via `getMyHandHandles(gameId)` → `peekMyHand(zap, wallet, handles)` → render `card.label`. Only you can decrypt your handles (you're `allow`ed).
+2. **Open the pile:** read `getOpeningHandle()`, `attestCard(...)` it, then call `commitOpening(gameId, value, signatures, chosenColor)`.
+3. **Play:** pick a card you peeked → submit `playCard(gameId, handIndex, value, signatures, chosenColor)` using that card's `attested` value + sigs. The contract's `_verifyValue` binds value→handle (no lying), then enforces UNO legality.
+4. **Draw:** `drawCard(gameId)` (adds a secret card; peek it client-side).
+5. **UX:** show a brief "revealing…" state around attestation calls (covalidator round-trip).
 
 ## Notes
-- Wallet/tx via `viem`; target **Base Sepolia** (`supportedChains.baseSepolia`).
-- Keep Socket.io (from ZunnoGame) for snappy turn/lobby UX; secrets never touch it.
+- Target **Base Sepolia** (`supportedChains.baseSepolia`); use `Lightning.baseMainnet()` for mainnet.
+- The server (`/server`) no longer holds cards — confidentiality is enforced on-chain by Inco + covalidators.

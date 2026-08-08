@@ -1,0 +1,95 @@
+// Zunno × Inco — frontend confidential-deck client
+//
+// Bridges the React app to Inco Lightning: read your secret hand handles from
+// the contract, user-decrypt them client-side to SEE your cards, and produce
+// the covalidator attestation (value + signatures) you submit on-chain to
+// commitOpening()/playCard().
+//
+// ⚠️ WIP: confirm exact @inco/lightning-js method names against docs.inco.org
+//   (js-sdk → encryption / attestations). Marked with TODO where uncertain.
+
+import { Lightning } from "@inco/lightning-js/lite";
+import { supportedChains, type HexString } from "@inco/lightning-js";
+import type { WalletClient } from "viem";
+
+// ── Zap (Inco client) ───────────────────────────────────────────────────────
+export async function getZap(rpcUrl?: string) {
+  // For Base mainnet use Lightning.baseMainnet(). Pass your own RPC for reliability.
+  return Lightning.baseSepoliaTestnet(
+    rpcUrl ? { hostChainRpcUrls: [rpcUrl] } : undefined
+  );
+}
+
+export const BASE_SEPOLIA = supportedChains.baseSepolia;
+
+// ── Attested decryption: value + signatures for on-chain _verifyValue ─────────
+// The player is `allow`ed on their own card handles (and everyone on the opener),
+// so they can obtain a covalidator attestation of the plaintext. The same
+// { value, signatures } is submitted to playCard()/commitOpening(), where the
+// contract calls e.verifyDecryption(handle, value, sigs).
+export interface AttestedValue {
+  value: bigint; // 1..108 (deck value)
+  signatures: HexString[]; // covalidator sigs -> contract `bytes[] sigs`
+}
+
+export async function attestCard(
+  zap: Awaited<ReturnType<typeof getZap>>,
+  wallet: WalletClient,
+  handle: HexString
+): Promise<AttestedValue> {
+  // TODO: confirm the exact SDK call. Expected shape (mirrors "Attested Decrypt"
+  // in the Inco js-sdk docs): returns the decrypted value + covalidator sigs.
+  const res: any = await (zap as any).attestedDecrypt(wallet, handle);
+  return { value: BigInt(res.value ?? res.plaintext?.value), signatures: res.signatures };
+}
+
+// ── UNO card codec (mirror of contracts/src/UnoCards.sol) ─────────────────────
+export type Kind = "number" | "skip" | "reverse" | "drawTwo" | "wild" | "wildDraw4";
+export const COLORS = ["Red", "Yellow", "Green", "Blue", "Wild"] as const;
+
+export interface UnoCard {
+  color: number; // 0..3, 4 = wild
+  kind: Kind;
+  number: number; // 0..9 (valid when kind === "number")
+  label: string; // e.g. "Red 5", "Blue Skip", "Wild +4"
+}
+
+export function decodeUnoCard(value: number | bigint): UnoCard {
+  const v = Number(value);
+  if (v < 1 || v > 108) throw new Error("card out of range");
+  const id = v - 1;
+  if (id >= 100) {
+    const kind: Kind = id < 104 ? "wild" : "wildDraw4";
+    return { color: 4, kind, number: -1, label: kind === "wild" ? "Wild" : "Wild +4" };
+  }
+  const color = Math.floor(id / 25);
+  const w = id % 25;
+  let kind: Kind, number = -1;
+  if (w === 0) { kind = "number"; number = 0; }
+  else if (w <= 18) { kind = "number"; number = Math.floor((w + 1) / 2); } // 1,2->1 ... 17,18->9
+  else if (w <= 20) kind = "skip";
+  else if (w <= 22) kind = "reverse";
+  else kind = "drawTwo";
+  const cname = COLORS[color];
+  const label =
+    kind === "number" ? `${cname} ${number}`
+    : kind === "skip" ? `${cname} Skip`
+    : kind === "reverse" ? `${cname} Reverse`
+    : `${cname} +2`;
+  return { color, kind, number, label };
+}
+
+// ── High-level: read + peek your hand ─────────────────────────────────────────
+// `readHandHandles` should call the contract view getMyHandHandles(gameId).
+export async function peekMyHand(
+  zap: Awaited<ReturnType<typeof getZap>>,
+  wallet: WalletClient,
+  handles: HexString[]
+): Promise<Array<{ handle: HexString; card: UnoCard; attested: AttestedValue }>> {
+  const out = [];
+  for (const handle of handles) {
+    const attested = await attestCard(zap, wallet, handle);
+    out.push({ handle, card: decodeUnoCard(attested.value), attested });
+  }
+  return out;
+}
