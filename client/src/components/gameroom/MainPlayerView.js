@@ -1,13 +1,11 @@
 import React from "react";
-import StyledButton from "../styled-button";
+import { AnimatePresence, motion } from "framer-motion";
 
 const MainPlayerView = ({
   turn,
   playerDeck,
   onCardPlayedHandler,
   mainPlayer,
-  isSkipButtonDisabled,
-  onSkipButtonHandler,
 }) => {
   return (
     <>
@@ -19,49 +17,57 @@ const MainPlayerView = ({
         minHeight: "7rem",
         position: "relative"
       }}>
-        {playerDeck.map((item, i) => {
-          // Calculate position for fan effect
-          const totalCards = playerDeck.length;
-          const fanAngle = Math.min(40, totalCards * 5); // Max 40 degrees total fan
-          const cardAngle = (fanAngle / (totalCards - 1)) * (i - (totalCards - 1) / 2);
-          const isPlayable = turn === mainPlayer;
+        <AnimatePresence>
+          {playerDeck.map((item, i) => {
+            const totalCards = playerDeck.length;
+            const fanAngle = Math.min(40, totalCards * 5);
+            const cardAngle = totalCards === 1
+              ? 0
+              : (fanAngle / (totalCards - 1)) * (i - (totalCards - 1) / 2);
+            const isPlayable = turn === mainPlayer;
 
-          return (
-            <div
-              key={item + i}
-              style={{
-                position: "relative",
-                margin: "0 -15px",
-                transform: `rotate(${cardAngle}deg)`,
-                transformOrigin: "bottom center",
-                transition: "transform 0.2s ease-in-out",
-                zIndex: i,
-                ':hover': {
-                  transform: isPlayable ? `rotate(${cardAngle}deg) translateY(-10px)` : `rotate(${cardAngle}deg)`,
-                  zIndex: 100 + i
-                },
-                zoom: turn != mainPlayer ? "0.85":"1.04",
-                filter: turn != mainPlayer ? "brightness(0.75)": ""
-              }}
-            >
-              <img
+            return (
+              <motion.button
+                key={item + i}
+                type="button"
+                layout
+                disabled={!isPlayable}
+                aria-label={`Play ${item}`}
+                initial={{ opacity: 0, y: 72, rotate: cardAngle - 8, scale: 0.75 }}
+                animate={{ opacity: 1, y: 0, rotate: cardAngle, scale: isPlayable ? 1.04 : 0.88 }}
+                exit={{ opacity: 0, y: -80, rotate: cardAngle + 16, scale: 0.7 }}
+                whileHover={isPlayable ? { y: -20, scale: 1.12, zIndex: 50 } : undefined}
+                whileTap={isPlayable ? { scale: 0.96 } : undefined}
+                transition={{ type: "spring", stiffness: 360, damping: 26, delay: i * 0.035 }}
+                onClick={() => onCardPlayedHandler(item)}
                 style={{
-                  pointerEvents: turn !== mainPlayer ? "none" : "auto",
-                  width: "3.5rem",
-                  height: "5.5rem",
-                  borderRadius: "0.5rem",
-                  // boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-                  cursor: turn === mainPlayer ? "pointer" : "default",
-                  border: turn === mainPlayer ? "2px solid rgba(14, 165, 233, 0.3)" : "none"
+                  position: "relative",
+                  margin: "0 -15px",
+                  transformOrigin: "bottom center",
+                  zIndex: i,
+                  border: 0,
+                  padding: 0,
+                  background: "transparent",
+                  cursor: isPlayable ? "pointer" : "default",
+                  filter: isPlayable ? "none" : "brightness(0.75)",
                 }}
-                alt={`cards-front ${item}`}
-                className={turn === mainPlayer ? "glow" : ""}
-                onClick={() => turn === mainPlayer ? onCardPlayedHandler(item) : null}
-                src={`/assets/cards-front/${item}.webp`}
-              />
-            </div>
-          );
-        })}
+              >
+                <img
+                  style={{
+                    pointerEvents: "none",
+                    width: "3.5rem",
+                    height: "5.5rem",
+                    borderRadius: "0.5rem",
+                    border: turn === mainPlayer ? "2px solid rgba(14, 165, 233, 0.3)" : "none"
+                  }}
+                  alt={`cards-front ${item}`}
+                  className={turn === mainPlayer ? "glow" : ""}
+                  src={`/assets/cards-front/${item}.webp`}
+                />
+              </motion.button>
+            );
+          })}
+        </AnimatePresence>
       </div>
 
       {/* Hide the skip button as it's now handled in the parent */}

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import StyledButton from "../styled-button";
+import { AnimatePresence, motion } from "framer-motion";
 
 const CommonView = ({
   playedCardsPile,
@@ -23,18 +23,10 @@ const CommonView = ({
   };
   return (
     <div style={{ position: "relative", width: "100%" }}>
-      {/* Hide the buttons as they're now handled in the parent component */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", height: "100vh" }}>
-        {/* <StyledButton
-          className='bg-green-500'
-          disabled={isDrawDisabled}
-          onClick={onCardDrawnHandler}
-          style={isDrawDisabled ? {pointerEvents: "none"} : null}
-        > */}
-        <button
+        <motion.button
           className="draw-deck"
           style={{
-            left: "1rem",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -44,15 +36,22 @@ const CommonView = ({
             marginTop: "10rem",
             position: "absolute",
             left: "50%",
-            transform: "translate(-50%,56px)",
             zIndex: "10"
           }}
+          animate={isDrawDisabled || isDrawing
+            ? { x: "-50%", y: 56, scale: 1 }
+            : { x: "-50%", y: [56, 50, 56], scale: 1 }}
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.92, rotate: -4 }}
+          transition={isDrawDisabled || isDrawing
+            ? { duration: 0.2 }
+            : { y: { duration: 1.8, repeat: Infinity, ease: "easeInOut" } }}
           role="button"
           disabled={isDrawDisabled || isDrawing}
           onClick={handleDrawCard}
         >
           <img src="/images/draw.png" alt="draw" />
-        </button>
+        </motion.button>
       {playedCardsPile && playedCardsPile.length > 0 && (
         <div style={{
           position: "absolute",
@@ -64,21 +63,26 @@ const CommonView = ({
           left: "50%",
           transform: "translateX(-50%)"
         }}>
-          <img
-            style={{
-              pointerEvents: "none",
-              width: "5.5rem",
-              height: "8rem",
-              borderRadius: "0.5rem",
-              boxShadow: "0 0 15px rgba(14, 165, 233, 0.5)"
-            }}
-            alt={`cards-front ${playedCardsPile[playedCardsPile.length - 1]}`}
-            src={`/assets/cards-front/${playedCardsPile[playedCardsPile.length - 1]}.webp`}
-          />
+          <AnimatePresence mode="popLayout">
+            <motion.img
+              key={playedCardsPile[playedCardsPile.length - 1]}
+              initial={{ opacity: 0, y: -70, rotate: -14, scale: 0.65 }}
+              animate={{ opacity: 1, y: 0, rotate: 2, scale: 1 }}
+              exit={{ opacity: 0, y: 20, rotate: 12, scale: 0.85 }}
+              transition={{ type: "spring", stiffness: 340, damping: 22 }}
+              style={{
+                pointerEvents: "none",
+                width: "5.5rem",
+                height: "8rem",
+                borderRadius: "0.5rem",
+                boxShadow: "0 0 15px rgba(14, 165, 233, 0.5)"
+              }}
+              alt={`cards-front ${playedCardsPile[playedCardsPile.length - 1]}`}
+              src={`/assets/cards-front/${playedCardsPile[playedCardsPile.length - 1]}.webp`}
+            />
+          </AnimatePresence>
         </div>
       )}
-        {/* DRAW CARD */}
-        {/* </StyledButton> */}
         <div
           style={{
             display: "flex",
@@ -89,7 +93,7 @@ const CommonView = ({
             transform: "translateX(-50%)"
           }}
         >
-          <button
+          <motion.button
             onClick={onUnoClicked}
             disabled={isUnoDisabled}
             style={{
@@ -100,9 +104,11 @@ const CommonView = ({
               filter: isUnoDisabled ? "grayscale(1)" : "none",
               marginTop: "10rem"
             }}
+            whileHover={isUnoDisabled ? undefined : { scale: 1.08, rotate: -2 }}
+            whileTap={isUnoDisabled ? undefined : { scale: 0.92 }}
           >
             <img src="/images/zunno-button.png" alt="uno" />
-          </button>
+          </motion.button>
         </div>
       </div>
 

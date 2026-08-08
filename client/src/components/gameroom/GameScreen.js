@@ -5,8 +5,8 @@ import MainPlayerView from "./MainPlayerView";
 import bgMusic from "../../assets/sounds/game-bg-music.mp3";
 import useSound from "use-sound";
 import { useSoundProvider } from "../../context/SoundProvider";
-import StyledButton from "../styled-button";
 import { useRouter } from "next/navigation";
+import { MotionConfig } from "framer-motion";
 
 const GameScreen = ({
   currentUser,
@@ -59,7 +59,7 @@ const GameScreen = ({
   const opponentDeck = opponentDecks[0]?.deck || [];
   const { isSoundMuted, toggleMute } = useSoundProvider();
   const [isMusicMuted, setMusicMuted] = useState(true);
-  const [playBBgMusic, { pause }] = useSound(bgMusic, { loop: true });
+  const [playBBgMusic, { pause }] = useSound(bgMusic, { loop: true, volume: 0.18 });
   const [pulseAnimation, setPulseAnimation] = useState(false);
   const [skipTimer, setSkipTimer] = useState(null);
   const [skipTimeRemaining, setSkipTimeRemaining] = useState(10);
@@ -176,6 +176,7 @@ const GameScreen = ({
   }, [turn, currentUser, drawButtonPressed, onSkipButtonHandler]);
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="game-container" style={{
       minHeight: "100svh",
       display: "flex",
@@ -188,9 +189,10 @@ const GameScreen = ({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: "1rem",
-          marginTop: "1rem",
-          marginLeft: "1rem",
+          gap: "0.5rem",
+          top: "1rem",
+          left: "1rem",
+          right: "1rem",
           position: "absolute",
           zIndex: "50"
         }}
@@ -219,25 +221,34 @@ const GameScreen = ({
           {/* Back */}
         </button>
 
-        {/* <span>
-          <StyledButton className="bg-green-500 mr-2" onClick={toggleMute}>
-            <span className="material-icons">
-              {isSoundMuted ? "volume_off" : "volume_up"}
-            </span>
-          </StyledButton>
-          <StyledButton
-            className="bg-green-500"
+        <span style={{ display: "flex", gap: 8 }}>
+          <button
+            type="button"
+            className="glossy-button glossy-button-blue"
+            aria-label={isSoundMuted ? "Enable sound effects" : "Mute sound effects"}
+            aria-pressed={!isSoundMuted}
+            title={isSoundMuted ? "Enable sound effects" : "Mute sound effects"}
+            style={{ width: 42, height: 28, padding: 0, borderRadius: 18 }}
+            onClick={toggleMute}
+          >
+            {isSoundMuted ? "🔇" : "🔊"}
+          </button>
+          <button
+            type="button"
+            className="glossy-button glossy-button-blue"
+            aria-label={isMusicMuted ? "Play background music" : "Pause background music"}
+            aria-pressed={!isMusicMuted}
+            title={isMusicMuted ? "Play background music" : "Pause background music"}
+            style={{ width: 42, height: 28, padding: 0, borderRadius: 18 }}
             onClick={() => {
               if (isMusicMuted) playBBgMusic();
               else pause();
               setMusicMuted(!isMusicMuted);
             }}
           >
-            <span className="material-icons">
-              {isMusicMuted ? "music_off" : "music_note"}
-            </span>
-          </StyledButton>
-        </span> */}
+            {isMusicMuted ? "♪" : "♫"}
+          </button>
+        </span>
       </div>
 
       {/* Opponent View - Multiple Players */}
@@ -412,7 +423,7 @@ const GameScreen = ({
               isDrawDisabled={turn !== currentUser || actionsDisabled}
               playedCardsPile={playedCardsPile}
               onCardDrawnHandler={onCardDrawnHandler}
-              isUnoDisabled={turn !== currentUser || playerDeck.length !== 2 || actionsDisabled}
+              isUnoDisabled={turn !== currentUser || playerDeck.length !== 2 || actionsDisabled || unoClicked}
               onUnoClicked={() => {
                 setUnoClicked(true);
                 // Clear the turn timer when Uno is clicked
@@ -571,11 +582,10 @@ const GameScreen = ({
             mainPlayer={currentUser}
             playerDeck={playerDeck}
             onCardPlayedHandler={onCardPlayedHandler}
-            isSkipButtonDisabled={turn !== currentUser || !drawButtonPressed}
-            onSkipButtonHandler={onSkipButtonHandler}
           />
         </div>
     </div>
+    </MotionConfig>
   );
 };
 

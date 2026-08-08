@@ -24,6 +24,7 @@ import { unoGameABI } from "@/constants/unogameabi";
 import { getContractAddress } from "@/config/networks";
 import { useToast } from "@/components/ui/use-toast";
 import { Toaster } from "@/components/ui/toaster";
+import { useSoundProvider } from "@/context/SoundProvider";
 import GameBackground from "./GameBackground";
 import GameScreen from "./GameScreen";
 import ColourDialog from "./colourDialog";
@@ -73,6 +74,16 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   const { data: walletClient } = useWalletClient({ chainId: CHAIN_ID });
   const { sendTransactionAsync } = useSendTransaction();
   const { toast } = useToast();
+  const {
+    playCardPlayedSound,
+    playDraw2CardSound,
+    playDraw4CardSound,
+    playGameOverSound,
+    playShufflingSound,
+    playSkipCardSound,
+    playUnoSound,
+    playWildCardSound,
+  } = useSoundProvider();
   const contractAddress = getContractAddress(CHAIN_ID) as Address;
 
   const [game, setGame] = useState<ChainGame | null>(null);
@@ -84,6 +95,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   const [pendingColor, setPendingColor] = useState<PendingColor | null>(null);
   const cardCache = useRef(new Map<string, PeekedCard>());
   const handSession = useRef<HandDecryptSession | null>(null);
+  const previousGame = useRef<ChainGame | null>(null);
 
   const isPlayer = useCallback(
     (players: readonly string[]) =>
@@ -251,6 +263,8 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   useEffect(() => {
     cardCache.current.clear();
     handSession.current = null;
+    previousGame.current = null;
+    setGame(null);
     setHandles([]);
     setHand([]);
     setNeedsDecrypt(false);
@@ -259,6 +273,42 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   useEffect(() => {
     if (game?.phase === PHASE.finished) handSession.current = null;
   }, [game?.phase]);
+
+  useEffect(() => {
+    const previous = previousGame.current;
+    previousGame.current = game;
+    if (!game || !previous) return;
+
+    if (game.phase === PHASE.finished && previous.phase !== PHASE.finished) {
+      playGameOverSound();
+      return;
+    }
+    if (game.handSizes.some((size, index) => size === 1 && previous.handSizes[index] !== 1)) {
+      playUnoSound();
+      return;
+    }
+    if (game.topValue !== previous.topValue && game.topValue > 0n) {
+      const card = decodeUnoCard(game.topValue);
+      if (card.kind === "skip") playSkipCardSound();
+      else if (card.kind === "drawTwo") playDraw2CardSound();
+      else if (card.kind === "wildDraw4") playDraw4CardSound();
+      else if (card.kind === "wild") playWildCardSound();
+      else playCardPlayedSound();
+      return;
+    }
+    const cardCount = (sizes: number[]) => sizes.reduce((total, size) => total + size, 0);
+    if (cardCount(game.handSizes) > cardCount(previous.handSizes)) playShufflingSound();
+  }, [
+    game,
+    playCardPlayedSound,
+    playDraw2CardSound,
+    playDraw4CardSound,
+    playGameOverSound,
+    playShufflingSound,
+    playSkipCardSound,
+    playUnoSound,
+    playWildCardSound,
+  ]);
 
   useEffect(() => {
     void getZap().catch(() => undefined);
@@ -473,13 +523,13 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
           playedCardsPile={topAsset ? [topAsset] : []}
           drawButtonPressed={false}
           onSkipButtonHandler={() => undefined}
-          onUnoClicked={() => undefined}
+          onUnoClicked={playUnoSound}
           turnTimerEnabled={false}
           actionsDisabled={!!busy || needsDecrypt || playerIndex < 0}
         />
       </div>
 
-      <div style={{ position: "fixed", top: 18, left: "50%", transform: "translateX(-50%)", zIndex: 80, padding: "0.55rem 1rem", borderRadius: 999, background: "rgba(0,0,0,.72)", color: "white", fontFamily: "monospace", textAlign: "center" }}>
+      <div style={{ position: "fixed", top: 58, left: "50%", transform: "translateX(-50%)", zIndex: 80, padding: "0.55rem 1rem", borderRadius: 999, background: "rgba(0,0,0,.72)", color: "white", fontFamily: "monospace", textAlign: "center" }}>
         {busy || (turn === currentUser ? "Your turn" : `${shortAddress(game.currentPlayer)} is playing`)}
         <span style={{ opacity: 0.65 }}> · {game.direction === 1 ? "clockwise" : "counter-clockwise"}</span>
       </div>
@@ -487,7 +537,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
       {needsDecrypt && !busy && playerIndex >= 0 && (
         <button
           className="glossy-button glossy-button-blue"
-          style={{ position: "fixed", top: 72, left: "50%", transform: "translateX(-50%)", zIndex: 90 }}
+          style={{ position: "fixed", top: 108, left: "50%", transform: "translateX(-50%)", zIndex: 90 }}
           onClick={() => void unlockHand()}
         >
           Decrypt private cards
