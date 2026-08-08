@@ -1,9 +1,13 @@
-# server — Zunno × Inco (backend)
+# server — Zunno × Inco
 
-Reuse the Rust backend from **Khel-fun/ZunnoGame** (`main-v-02` → `/server`), but its role **shrinks**:
+Node.js/Socket.IO backend ported from **Khel-fun/uno-game** (`main` → `/backend`).
 
-- ❌ No longer distributes or holds cards (Inco handles confidentiality on-chain).
-- ❌ No VRF/SP1/ZKVerify shuffle pipeline needed for hiding hands (encrypted deal replaces it).
-- ✅ Keep: matchmaking, room/turn orchestration, real-time relay (WebSocket), and any indexing of public on-chain events (plays, results).
+```sh
+pnpm install
+cp .env.example .env
+pnpm dev
+```
 
-The security win: because the server no longer sees cards, there's nothing to leak or collude with — confidentiality is enforced by Inco + covalidators, not by trusting this service.
+This is still the legacy server-authoritative card flow. Keep it for rooms and
+real-time relay; it is not confidential until dealing and plays are routed
+through `ZunnoInco` instead of the server-held deck.
