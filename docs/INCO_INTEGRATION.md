@@ -4,7 +4,7 @@ Zunno uses **Inco Lightning 1.0.2** on Base Sepolia to keep the shuffled deck an
 
 Inco Lightning is **TEE-based confidential computing**, not FHE and not a zero-knowledge proof system. Solidity stores opaque `bytes32` handles (`euint256` and `elist`); Inco covalidators process their confidential values and sign decryptions that the contract can verify.
 
-Deployed contract: [`0x20f951FA33aa97bE317004B88b00293E86B5Ca7f`](https://sepolia.basescan.org/address/0x20f951FA33aa97bE317004B88b00293E86B5Ca7f)
+Deployed contract: [`0x3700c4a1085E858FC798ba3e27b33f074647f51d`](https://sepolia.basescan.org/address/0x3700c4a1085E858FC798ba3e27b33f074647f51d)
 
 ## What is private?
 
@@ -69,7 +69,7 @@ sequenceDiagram
     Creator->>Game: startGame(gameId)
     Game->>Inco: shuffledRange(1, 109)
     Inco-->>Game: confidential elist handle
-    loop Batches of at most four until seven cards per player
+    loop Batches of at most four until four cards per player
         Player->>Game: dealCards(gameId, count)
         Game->>Inco: draw encrypted card and allow owner
         Inco-->>Game: euint256 handle
@@ -118,7 +118,7 @@ card = _draw();
 e.allow(card, player);
 ```
 
-[`ZunnoInco.startGame`](../contracts/src/ZunnoInco.sol#L213) creates the confidential shuffle, then [`dealCards`](../contracts/src/ZunnoInco.sol#L235) stores at most four handles per transaction until each player has seven. Batching stays below Base Sepolia's transaction gas cap. The contract never writes their plaintext values to storage or events.
+[`ZunnoInco.startGame`](../contracts/src/ZunnoInco.sol#L213) creates the confidential shuffle, then [`dealCards`](../contracts/src/ZunnoInco.sol#L235) stores at most four handles per transaction until each player has four. Batching stays below Base Sepolia's transaction gas cap. The contract never writes their plaintext values to storage or events.
 
 ### 3. Player peeks at their hand
 
