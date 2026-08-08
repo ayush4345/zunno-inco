@@ -1,0 +1,65 @@
+import { ethers } from "ethers";
+import { UnoGameContract } from "./types";
+import UNOContractJson from "../constants/UnoGame.json";
+import { getContractAddress } from "@/config/networks";
+
+async function verifyContract(provider: ethers.Provider, address: string) {
+  const code = await provider.getCode(address);
+  if (code === "0x") {
+    throw new Error("No contract deployed at the specified address");
+  }
+  // console.log('Contract verified at address:', address);
+}
+
+/**
+ * Get RPC URL for a specific chain
+ */
+function getRpcUrl(chainId: number): string {
+  const rpcUrls: Record<number, string> = {
+    11142220: "https://rpc.ankr.com/celo_sepolia", // Celo Sepolia
+    84532: "https://sepolia.base.org", // Base Sepolia
+  };
+
+  const rpcUrl = rpcUrls[chainId];
+  if (!rpcUrl) {
+    throw new Error(`No RPC URL configured for chain ID: ${chainId}`);
+  }
+
+  return rpcUrl;
+}
+
+/**
+ * Get a read-only contract instance for fetching game state
+ * This does NOT require a private key - it uses a public RPC provider
+ */
+export async function getContractNew(chainId: number) {
+  try {
+    console.log('getContractNew called with chainId:', chainId);
+    const rpcUrl = getRpcUrl(chainId);
+    console.log('Using RPC URL:', rpcUrl);
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+    const contractAddress = getContractAddress(chainId);
+    console.log('Contract address for chain', chainId, ':', contractAddress);
+    if (!contractAddress) {
+      throw new Error(`Contract address not found for chain ID: ${chainId}`);
+    }
+    const contractABI = UNOContractJson.abi;
+
+    await verifyContract(provider, contractAddress);
+
+    // Use read-only contract (no signer needed for read operations)
+    const gameContract = new ethers.Contract(
+      contractAddress,
+      contractABI,
+      provider,
+    ) as ethers.Contract & UnoGameContract;
+    console.log('Contract created successfully at:', contractAddress, 'on chain:', chainId);
+
+    return { contract: gameContract, provider };
+  } catch (error) {
+    console.error("Failed to connect to contract:", error);
+
+    return { contract: null, provider: null };
+  }
+}
