@@ -4,7 +4,7 @@ Zunno uses **Inco Lightning 1.0.2** on Base Sepolia to keep the shuffled deck an
 
 Inco Lightning is **TEE-based confidential computing**, not FHE and not a zero-knowledge proof system. Solidity stores opaque `bytes32` handles (`euint256` and `elist`); Inco covalidators process their confidential values and sign decryptions that the contract can verify.
 
-Deployed contract: [`0x7eBD435491fE6F11109B4C3BE8AAFCC724ee7839`](https://sepolia.basescan.org/address/0x7eBD435491fE6F11109B4C3BE8AAFCC724ee7839)
+Deployed contract: [`0x20f951FA33aa97bE317004B88b00293E86B5Ca7f`](https://sepolia.basescan.org/address/0x20f951FA33aa97bE317004B88b00293E86B5Ca7f)
 
 ## What is private?
 
@@ -46,18 +46,12 @@ flowchart LR
     Wallet -->|authorize private decrypt| SDK
     SDK -->|attestedDecrypt handles| TEE
     TEE -->|plaintext plus signatures| SDK
-    SDK -.->|playCard index, value, signatures| Game
+    SDK -->|playCard index, value, signatures| Game
     Game -->|verifyDecryption| Verify
     Verify -->|validate covalidator signatures| Game
-
-    Legacy[Legacy socket game state<br/>currently authoritative in UI]
-    UI --> Legacy
-
-    classDef gap stroke:#d97706,stroke-width:3px,stroke-dasharray:5 5;
-    class SDK gap;
 ```
 
-The dashed SDK-to-contract arrow is the remaining integration boundary: the helper exists, but the active game UI does not call it yet.
+The contract is authoritative in multiplayer. The computer-only mode remains a local demo and does not use the confidential contract lifecycle.
 
 ## Confidential game lifecycle
 
@@ -75,7 +69,8 @@ sequenceDiagram
     Creator->>Game: startGame(gameId)
     Game->>Inco: shuffledRange(1, 109)
     Inco-->>Game: confidential elist handle
-    loop Seven cards per player
+    loop Batches of at most four until seven cards per player
+        Player->>Game: dealCards(gameId, count)
         Game->>Inco: draw encrypted card and allow owner
         Inco-->>Game: euint256 handle
     end
@@ -123,7 +118,7 @@ card = _draw();
 e.allow(card, player);
 ```
 
-[`ZunnoInco.startGame`](../contracts/src/ZunnoInco.sol#L207) stores seven such handles in each player's private hand mapping. The contract never writes their plaintext values to storage or events.
+[`ZunnoInco.startGame`](../contracts/src/ZunnoInco.sol#L213) creates the confidential shuffle, then [`dealCards`](../contracts/src/ZunnoInco.sol#L235) stores at most four handles per transaction until each player has seven. Batching stays below Base Sepolia's transaction gas cap. The contract never writes their plaintext values to storage or events.
 
 ### 3. Player peeks at their hand
 
@@ -201,21 +196,12 @@ When a verified play empties the caller's on-chain hand, `_finish` records that 
 | Confidential shuffle/deal/access control | Complete | `ConfidentialDeck.sol` |
 | Attestation verification in opener/play | Complete | `_verifyValue` in `commitOpening` and `playCard` |
 | Base Sepolia deployment and initial fee funding | Complete | deployed contract above |
-| Private-hand client helper | Implemented, not connected | `client/incoDeckClient.ts` has no active UI import |
-| Public opener helper | Missing | opener needs `attestedReveal`, not `attestedDecrypt` |
+| Private-hand client helper | Complete | `ConfidentialGame.tsx` calls `peekMyHand` for the connected player |
+| Public opener helper | Complete | `attestRevealedCard` uses `attestedReveal` |
 | Existing visual UI | Preserved | no layout/component redesign |
-| End-to-end confidential UI game | **Not complete** | active `Game.js` still shuffles `PACK_OF_CARDS` locally and syncs it through sockets |
+| End-to-end confidential UI game | Complete | multiplayer actions route through `ConfidentialGame.tsx` and `ZunnoInco` |
 
-Today, pressing Start calls the deployed contract's `startGame`, so Inco really does shuffle and deal a confidential on-chain deck. The UI then initializes a separate legacy random deck and does not call `commitOpening`, `drawCard`, or `playCard`. Consequently, the deployed contract remains in `Opening` and is not yet the authoritative gameplay state.
-
-Completing the integration does not require changing the visual design. It requires changing only the existing handlers/state source:
-
-1. After `startGame`, read the opening handle with `attestedReveal` and call `commitOpening`.
-2. Replace the locally shuffled player hand with `getMyHandHandles` + `peekMyHand`.
-3. Route the Draw handler through `drawCard`, then re-fetch the hand.
-4. Route the Play handler through `playCard` with the selected card's attested value/signatures.
-5. Treat `getGameState` and contract events as authoritative; use sockets only to notify clients to refresh.
-6. Remove the legacy `endGame` transaction path because the Inco contract settles automatically when the verified hand becomes empty.
+The multiplayer UI polls contract state, batches the initial deal, reveals and commits the opener, decrypts only the connected player's handles, and submits attested plays. Draws and settlement also execute through the contract; sockets do not carry authoritative multiplayer card state.
 
 ## Tests
 
@@ -224,13 +210,15 @@ Completing the integration does not require changing the visual design. It requi
 - shuffle fees cannot silently consume escrow;
 - each private card handle is allowed to its owner and the contract, not the opponent;
 - the opening handle is publicly revealed;
+- confidential dealing is limited to four cards per transaction;
+- public hand counts expose lengths without card values;
 - only the creator starts the game;
 - legacy lobby entrypoints preserve `msg.sender` identity.
 
 The missing acceptance check is one live Base Sepolia game that completes:
 
 ```text
-create -> join -> start -> reveal opener -> commit opening
+create -> join -> start -> batched deal -> reveal opener -> commit opening
        -> private peek -> verified play/draw loop -> payout
 ```
 

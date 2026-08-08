@@ -1,8 +1,8 @@
 
 # Zunno client
 
-UI ported from `Khel-fun/uno-game` (`main` → `/frontend`) with the Inco deck
-bridge retained in `incoDeckClient.ts`.
+UI ported from `Khel-fun/uno-game` (`main` → `/frontend`) with confidential
+multiplayer powered by the Inco contract and browser wallet.
 
 ```sh
 # Node 20
@@ -11,6 +11,5 @@ pnpm install
 pnpm dev
 ```
 
-The imported screens still use the legacy socket/ZK game flow. The Inco bridge
-is ready for wiring `getMyHandHandles` → private hand decrypts and
-`commitOpening`/`playCard` attestations.
+Multiplayer uses `ConfidentialGame.tsx` for contract state, batched encrypted
+dealing, private hand decrypts, and attested plays. Computer mode stays local.
