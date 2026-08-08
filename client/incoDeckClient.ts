@@ -5,12 +5,11 @@
 // the covalidator attestation (value + signatures) you submit on-chain to
 // commitOpening()/playCard().
 //
-// ⚠️ WIP: confirm exact @inco/lightning-js method names against docs.inco.org
-//   (js-sdk → encryption / attestations). Marked with TODO where uncertain.
-
 import { Lightning } from "@inco/lightning-js/lite";
 import { supportedChains, type HexString } from "@inco/lightning-js";
-import type { WalletClient } from "viem";
+import { bytesToHex, type Account, type Chain, type Transport, type WalletClient } from "viem";
+
+export type ConnectedWalletClient = WalletClient<Transport, Chain, Account>;
 
 // ── Zap (Inco client) ───────────────────────────────────────────────────────
 export async function getZap(rpcUrl?: string) {
@@ -22,6 +21,14 @@ export async function getZap(rpcUrl?: string) {
 
 export const BASE_SEPOLIA = supportedChains.baseSepolia;
 
+type IncoWalletClient = Parameters<
+  Awaited<ReturnType<typeof getZap>>["attestedDecrypt"]
+>[0];
+
+// lightning-js pins an older viem minor; the connected client is runtime-compatible.
+const asIncoWallet = (wallet: ConnectedWalletClient) =>
+  wallet as unknown as IncoWalletClient;
+
 // ── Attested decryption: value + signatures for on-chain _verifyValue ─────────
 // The player is `allow`ed on their own card handles (and everyone on the opener),
 // so they can obtain a covalidator attestation of the plaintext. The same
@@ -32,15 +39,31 @@ export interface AttestedValue {
   signatures: HexString[]; // covalidator sigs -> contract `bytes[] sigs`
 }
 
+const DECRYPT_OPTIONS = {
+  backoffConfig: { maxRetries: 12, baseDelayInMs: 350, backoffFactor: 1.4 },
+} as const;
+
+function toAttestedValue(result: {
+  plaintext: { value: bigint | boolean };
+  covalidatorSignatures: Uint8Array[];
+}): AttestedValue {
+  if (typeof result.plaintext.value !== "bigint") {
+    throw new Error("card attestation was not an encrypted uint256");
+  }
+  return {
+    value: result.plaintext.value,
+    signatures: result.covalidatorSignatures.map((signature) => bytesToHex(signature)),
+  };
+}
+
 export async function attestCard(
   zap: Awaited<ReturnType<typeof getZap>>,
-  wallet: WalletClient,
+  wallet: ConnectedWalletClient,
   handle: HexString
 ): Promise<AttestedValue> {
-  // TODO: confirm the exact SDK call. Expected shape (mirrors "Attested Decrypt"
-  // in the Inco js-sdk docs): returns the decrypted value + covalidator sigs.
-  const res: any = await (zap as any).attestedDecrypt(wallet, handle);
-  return { value: BigInt(res.value ?? res.plaintext?.value), signatures: res.signatures };
+  const [result] = await zap.attestedDecrypt(asIncoWallet(wallet), [handle], DECRYPT_OPTIONS);
+  if (!result) throw new Error("card attestation was not returned");
+  return toAttestedValue(result);
 }
 
 // ── UNO card codec (mirror of contracts/src/UnoCards.sol) ─────────────────────
@@ -83,13 +106,14 @@ export function decodeUnoCard(value: number | bigint): UnoCard {
 // `readHandHandles` should call the contract view getMyHandHandles(gameId).
 export async function peekMyHand(
   zap: Awaited<ReturnType<typeof getZap>>,
-  wallet: WalletClient,
+  wallet: ConnectedWalletClient,
   handles: HexString[]
 ): Promise<Array<{ handle: HexString; card: UnoCard; attested: AttestedValue }>> {
-  const out = [];
-  for (const handle of handles) {
-    const attested = await attestCard(zap, wallet, handle);
-    out.push({ handle, card: decodeUnoCard(attested.value), attested });
-  }
-  return out;
+  if (handles.length === 0) return [];
+  const results = await zap.attestedDecrypt(asIncoWallet(wallet), handles, DECRYPT_OPTIONS);
+  if (results.length !== handles.length) throw new Error("incomplete hand attestation");
+  return results.map((result) => {
+    const attested = toAttestedValue(result);
+    return { handle: result.handle, card: decodeUnoCard(attested.value), attested };
+  });
 }
