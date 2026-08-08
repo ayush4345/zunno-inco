@@ -18,7 +18,7 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
     using e for euint256;
 
     uint16 constant DECK = 108; // full UNO deck
-    uint8 constant START_HAND = 7;
+    uint8 constant START_HAND = 4;
     uint8 public constant MAX_DEAL_BATCH = 4;
     // ponytail: one 108-card shoe; add encrypted discard reshuffling if long games exhaust it.
     uint256 public constant MAX_PLAYERS = 4;

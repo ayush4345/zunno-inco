@@ -43,7 +43,7 @@ contract ZunnoIncoTest is IncoTest {
 
         (uint16 dealt, uint16 total, bool ready) = game.getDealProgress(gameId);
         assertEq(dealt, 0);
-        assertEq(total, 14);
+        assertEq(total, 8);
         assertFalse(ready);
         while (!ready) {
             game.dealCards(gameId, 4);
@@ -56,7 +56,7 @@ contract ZunnoIncoTest is IncoTest {
 
         vm.prank(alice);
         bytes32[] memory hand = game.getMyHandHandles(gameId);
-        assertEq(hand.length, 7);
+        assertEq(hand.length, 4);
         for (uint256 i = 0; i < hand.length; i++) {
             assertTrue(inco.persistAllowed(hand[i], alice));
             assertTrue(inco.persistAllowed(hand[i], address(game)));
@@ -64,8 +64,8 @@ contract ZunnoIncoTest is IncoTest {
         }
         uint256[] memory handSizes = game.getHandSizes(gameId);
         assertEq(handSizes.length, 2);
-        assertEq(handSizes[0], 7);
-        assertEq(handSizes[1], 7);
+        assertEq(handSizes[0], 4);
+        assertEq(handSizes[1], 4);
         assertTrue(inco.isRevealed(game.getOpeningHandle()));
     }
 
