@@ -19,7 +19,8 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
 
     uint16 constant DECK = 108; // full UNO deck
     uint8 constant START_HAND = 7;
-    uint256 public constant MAX_PLAYERS = 15; // 15 * 7 cards + opener fits one deck
+    // ponytail: one 108-card shoe; add encrypted discard reshuffling if long games exhaust it.
+    uint256 public constant MAX_PLAYERS = 4;
     uint16 constant RAKE_BPS = 300; // 3% -> Megapot jackpot (see BUILD_PLAN)
 
     enum Phase {
@@ -342,6 +343,16 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         out = new bytes32[](hand.length);
         for (uint256 i = 0; i < hand.length; i++) {
             out[i] = euint256.unwrap(hand[i]);
+        }
+    }
+
+    /// @notice Public hand counts for table rendering; card values stay encrypted.
+    function getHandSizes(uint256 gameId) external view returns (uint256[] memory out) {
+        require(gameId != 0 && gameId <= nextGameId, "invalid game");
+        address[] storage players = games[gameId].players;
+        out = new uint256[](players.length);
+        for (uint256 i = 0; i < players.length; i++) {
+            out[i] = hands[gameId][players[i]].length;
         }
     }
 

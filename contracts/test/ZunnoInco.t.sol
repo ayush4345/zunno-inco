@@ -52,6 +52,10 @@ contract ZunnoIncoTest is IncoTest {
             assertTrue(inco.persistAllowed(hand[i], address(game)));
             assertFalse(inco.persistAllowed(hand[i], bob));
         }
+        uint256[] memory handSizes = game.getHandSizes(gameId);
+        assertEq(handSizes.length, 2);
+        assertEq(handSizes[0], 7);
+        assertEq(handSizes[1], 7);
         assertTrue(inco.isRevealed(game.getOpeningHandle()));
     }
 
@@ -93,5 +97,11 @@ contract ZunnoIncoTest is IncoTest {
     function testReverseFromTurnZeroWrapsToLastPlayer() public {
         ZunnoHarness harness = new ZunnoHarness();
         assertEq(harness.reverseFromZero(alice, bob), 1);
+    }
+
+    function testLobbyRejectsMorePlayersThanTheClientCanRender() public {
+        vm.prank(alice);
+        vm.expectRevert("max players");
+        game.createGame(alice, false, false, bytes32(0), 5);
     }
 }
