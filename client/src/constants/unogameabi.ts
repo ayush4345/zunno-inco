@@ -55,17 +55,6 @@ export const unoGameABI = [
   },
   {
     type: "function",
-    name: "joinGameWithCode",
-    inputs: [
-      { name: "gameId", type: "uint256" },
-      { name: "joinee", type: "address" },
-      { name: "gameCode", type: "string" },
-    ],
-    outputs: [],
-    stateMutability: "payable",
-  },
-  {
-    type: "function",
     name: "startGame",
     inputs: [{ name: "gameId", type: "uint256" }],
     outputs: [],

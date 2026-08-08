@@ -62,7 +62,6 @@ export interface GameViewResult {
 export interface UnoGameContract {
   createGame: (account: `0x${string}` | undefined, isBot?: boolean) => Promise<any>;
   joinGame: (gameId: bigint, address: `0x${string}` | undefined) => Promise<any>;
-  joinGameWithCode: (gameId: bigint, address: `0x${string}` | undefined, gameCode: string) => Promise<any>;
   startGame: (gameId: bigint) => Promise<any>;
   commitMove: (gameId: bigint, moveHash: string) => Promise<any>;
   getGame: (gameId: bigint) => Promise<GameViewResult>;

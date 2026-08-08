@@ -21,26 +21,12 @@ import {
   isSupportedChain,
   getSupportedChainIds,
 } from "@/config/networks";
-import { encodeFunctionData, keccak256, toBytes, toHex, stringToHex } from "viem";
+import { encodeFunctionData, keccak256, toBytes } from "viem";
 
 // GameCreated event signature - now includes isPrivate param
 const GAME_CREATED_EVENT_SIGNATURE = keccak256(
   toBytes("GameCreated(uint256,address,bool)")
 );
-
-/**
- * Generate a random 8-character alphanumeric game code
- */
-function generateGameCode(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // No I/O/0/1 to avoid confusion
-  let code = "";
-  const array = new Uint8Array(8);
-  crypto.getRandomValues(array);
-  for (let i = 0; i < 8; i++) {
-    code += chars[array[i] % chars.length];
-  }
-  return code;
-}
 
 /**
  * Extract gameId from transaction receipt logs
@@ -90,13 +76,7 @@ export default function PlayGame() {
   // Lobby state
   const [activeTab, setActiveTab] = useState<LobbyTab>("public");
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [isPrivateGame, setIsPrivateGame] = useState(false);
   const [maxPlayersSelection, setMaxPlayersSelection] = useState(4);
-  const [generatedCode, setGeneratedCode] = useState("");
-  const [codeCopied, setCodeCopied] = useState(false);
-  const [joinCodeInput, setJoinCodeInput] = useState("");
-  const [joinCodeGameId, setJoinCodeGameId] = useState("");
-  const [showJoinCodeModal, setShowJoinCodeModal] = useState(false);
   const [displayCount, setDisplayCount] = useState(GAMES_PER_PAGE);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -223,30 +203,8 @@ export default function PlayGame() {
   // ========================================
 
   const openCreateModal = () => {
-    setIsPrivateGame(false);
     setMaxPlayersSelection(4);
-    setGeneratedCode("");
-    setCodeCopied(false);
     setShowCreateModal(true);
-  };
-
-  const handleTogglePrivate = (isPrivate: boolean) => {
-    setIsPrivateGame(isPrivate);
-    if (isPrivate && !generatedCode) {
-      setGeneratedCode(generateGameCode());
-    }
-    setCodeCopied(false);
-  };
-
-  const copyGameCode = () => {
-    navigator.clipboard.writeText(generatedCode);
-    setCodeCopied(true);
-    toast({
-      title: "Code Copied",
-      description: "Game code copied to clipboard. Share it with friends!",
-      duration: 3000,
-    });
-    setTimeout(() => setCodeCopied(false), 2000);
   };
 
   const createGame = async () => {
@@ -270,21 +228,11 @@ export default function PlayGame() {
         );
       }
 
-      let data: `0x${string}`;
-      if (isPrivateGame) {
-        const codeHash = keccak256(toBytes(generatedCode));
-        data = encodeFunctionData({
-          abi: unoGameABI,
-          functionName: "createGame",
-          args: [address as `0x${string}`, false, true, codeHash, BigInt(maxPlayersSelection)],
-        });
-      } else {
-        data = encodeFunctionData({
-          abi: unoGameABI,
-          functionName: "createGame",
-          args: [address as `0x${string}`, false, false, "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`, BigInt(maxPlayersSelection)],
-        });
-      }
+      const data = encodeFunctionData({
+        abi: unoGameABI,
+        functionName: "createGame",
+        args: [address as `0x${string}`, false, false, "0x0000000000000000000000000000000000000000000000000000000000000000", BigInt(maxPlayersSelection)],
+      });
 
       setTransactionStatus("Sending transaction...");
       const hash = await sendTransaction(data);
@@ -308,22 +256,11 @@ export default function PlayGame() {
           const gameIdStr = newGameId.toString();
           setGameId(newGameId);
 
-          // Register game code with backend for private games
-          socketManager.emit(
-            "createGameRoom",
-            { gameId: gameIdStr, isPrivate: isPrivateGame, gameCode: isPrivateGame ? generatedCode : undefined },
-            (response: { gameCode?: string }) => {
-              if (isPrivateGame && response?.gameCode) {
-                console.log("Backend game code registered:", response.gameCode);
-              }
-            }
-          );
+          socketManager.emit("createGameRoom", { gameId: gameIdStr, isPrivate: false });
 
           toast({
             title: "Game Created!",
-            description: isPrivateGame
-              ? `Private game created (Game #${gameIdStr}). Code: ${generatedCode}`
-              : `Public game #${gameIdStr} created. Redirecting...`,
+            description: `Public game #${gameIdStr} created. Redirecting...`,
             duration: 5000,
             variant: "success",
           });
@@ -497,121 +434,6 @@ export default function PlayGame() {
     }
   };
 
-  const joinGameWithCode = async () => {
-    if (!address || !joinCodeInput) {
-      toast({
-        title: "Missing Information",
-        description: "Please enter the game code.",
-        variant: "destructive",
-        duration: 5000,
-      });
-      return;
-    }
-
-    try {
-      let resolvedGameId = joinCodeGameId;
-
-      // If no game ID provided, look it up from the backend via game code
-      if (!resolvedGameId) {
-        const lookupResult = await new Promise<{ gameId?: string; error?: string }>((resolve) => {
-          let resolved = false;
-          const timer = setTimeout(() => {
-            if (!resolved) {
-              resolved = true;
-              resolve({ error: "Lookup timed out. Please enter the Game ID manually." });
-            }
-          }, 8000);
-
-          socketManager.emit("validateGameCode", { gameCode: joinCodeInput }, (response: any) => {
-            if (!resolved) {
-              resolved = true;
-              clearTimeout(timer);
-              resolve(response || { error: "No response from server" });
-            }
-          });
-        });
-
-        if (lookupResult.error || !lookupResult.gameId) {
-          toast({
-            title: "Invalid Game Code",
-            description: lookupResult.error || "Could not find a game with that code.",
-            variant: "destructive",
-            duration: 5000,
-          });
-          return;
-        }
-        resolvedGameId = lookupResult.gameId;
-      }
-
-      const gId = BigInt(resolvedGameId);
-      setJoiningGameId(gId);
-      const data = encodeFunctionData({
-        abi: unoGameABI,
-        functionName: "joinGameWithCode",
-        args: [gId, address as `0x${string}`, joinCodeInput],
-      });
-
-      const hash = await sendTransaction(data);
-      toast({
-        title: "Transaction Sent!",
-        description: "Verifying game code...",
-        duration: 5000,
-      });
-
-      const joinCodeReceipt = await waitForReceipt(hash);
-      if (joinCodeReceipt?.status === "reverted") {
-        // May be AlreadyJoined — redirect anyway
-        router.push(`/game/${gId.toString()}`);
-        setShowJoinCodeModal(false);
-        setJoinCodeInput("");
-        setJoinCodeGameId("");
-        setJoiningGameId(null);
-        return;
-      }
-      toast({
-        title: "Joined Private Game!",
-        description: "Redirecting to game...",
-        duration: 3000,
-        variant: "success",
-      });
-      setShowJoinCodeModal(false);
-      setJoinCodeInput("");
-      setJoinCodeGameId("");
-      setJoiningGameId(null);
-      router.push(`/game/${gId.toString()}`);
-    } catch (error: any) {
-      console.error("Failed to join with code:", error);
-      const errorMessage = error?.message || "";
-      if (errorMessage.includes("InvalidGameCode")) {
-        toast({
-          title: "Invalid Game Code",
-          description: "The game code you entered is incorrect.",
-          variant: "destructive",
-          duration: 5000,
-        });
-      } else if (
-        errorMessage.includes("AlreadyJoined") ||
-        errorMessage.includes("already joined")
-      ) {
-        toast({
-          title: "Already in this game!",
-          description: "Redirecting...",
-          duration: 3000,
-        });
-        setShowJoinCodeModal(false);
-        router.push(`/game/${joinCodeGameId}`);
-      } else {
-        toast({
-          title: "Failed to Join",
-          description: error?.message || "Please try again",
-          variant: "destructive",
-          duration: 5000,
-        });
-      }
-      setJoiningGameId(null);
-    }
-  };
-
   const deleteGame = async (gameId: BigInt) => {
     if (!address) return;
 
@@ -634,9 +456,6 @@ export default function PlayGame() {
       if (deleteReceipt?.status === "reverted") {
         throw new Error("Transaction reverted on-chain. Failed to delete game.");
       }
-
-      // Clean up game code on backend
-      socketManager.emit("deleteGameCode", { gameId: gameId.toString() });
 
       toast({
         title: "Game Deleted",
@@ -749,7 +568,7 @@ export default function PlayGame() {
                     Create a Room
                   </h3>
                   <p className="text-white/80 text-sm text-end">
-                    public or private - you choose
+                    create a public multiplayer room
                   </p>
                 </div>
               </div>
@@ -789,16 +608,6 @@ export default function PlayGame() {
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Join by Code Button */}
-            <div className="mb-4">
-              <button
-                onClick={() => setShowJoinCodeModal(true)}
-                className="w-full py-3 bg-gradient-to-r from-indigo-600/30 to-purple-600/30 hover:from-indigo-600/50 hover:to-purple-600/50 border border-indigo-500/30 rounded-xl text-white font-medium transition-all duration-200"
-              >
-                Join Private Game with Code
-              </button>
             </div>
 
             {/* Tabs */}
@@ -949,35 +758,6 @@ export default function PlayGame() {
                   Create Game Room
                 </h2>
 
-                {/* Public/Private Toggle */}
-                <div className="mb-4">
-                  <label className="text-sm text-gray-300 mb-2 block">
-                    Game Visibility
-                  </label>
-                  <div className="flex space-x-1 bg-white/5 rounded-xl p-1">
-                    <button
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                        !isPrivateGame
-                          ? "bg-green-500/20 text-green-400 border border-green-500/30"
-                          : "text-gray-400 hover:text-white"
-                      }`}
-                      onClick={() => handleTogglePrivate(false)}
-                    >
-                      Public
-                    </button>
-                    <button
-                      className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                        isPrivateGame
-                          ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-                          : "text-gray-400 hover:text-white"
-                      }`}
-                      onClick={() => handleTogglePrivate(true)}
-                    >
-                      Private
-                    </button>
-                  </div>
-                </div>
-
                 {/* Number of Players */}
                 <div className="mb-6">
                   <label className="text-sm text-gray-300 mb-2 block">
@@ -1000,38 +780,9 @@ export default function PlayGame() {
                   </div>
                 </div>
 
-                {/* Game Code Display for Private */}
-                {isPrivateGame && generatedCode && (
-                  <div className="mb-6 bg-white/5 rounded-xl p-4 border border-amber-500/20">
-                    <label className="text-xs text-gray-400 mb-1 block">
-                      Game Code (share with friends)
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <code className="text-2xl font-mono font-bold text-amber-400 tracking-widest flex-1 text-center">
-                        {generatedCode}
-                      </code>
-                      <button
-                        onClick={copyGameCode}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                          codeCopied
-                            ? "bg-green-500/20 text-green-400"
-                            : "bg-white/10 text-white hover:bg-white/20"
-                        }`}
-                      >
-                        {codeCopied ? "Copied!" : "Copy"}
-                      </button>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      Only players with this code can join your game
-                    </p>
-                  </div>
-                )}
-
                 {/* Description */}
                 <p className="text-sm text-gray-400 mb-6">
-                  {isPrivateGame
-                    ? "A private game requires players to enter the game code to join. Share the code with your friends."
-                    : "Anyone can browse and join a public game from the lobby."}
+                  Anyone can browse and join this game from the lobby.
                 </p>
 
                 {/* Action Buttons */}
@@ -1049,78 +800,13 @@ export default function PlayGame() {
                   >
                     {createLoading
                       ? "Creating..."
-                      : `Create ${isPrivateGame ? "Private" : "Public"} Game`}
+                      : "Create Public Game"}
                   </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* Join with Code Modal */}
-          {showJoinCodeModal && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-gradient-to-b from-[#1a1a3e] to-[#0f0c29] border border-purple-500/30 rounded-2xl p-6 w-full max-w-md">
-                <h2 className="text-xl font-bold text-white mb-4">
-                  Join Private Game
-                </h2>
-
-                <div className="space-y-4 mb-6">
-                  <div>
-                    <label className="text-sm text-gray-300 mb-1 block">
-                      Game Code
-                    </label>
-                    <input
-                      type="text"
-                      value={joinCodeInput}
-                      onChange={(e) =>
-                        setJoinCodeInput(e.target.value.toUpperCase())
-                      }
-                      placeholder="Enter 8-character code"
-                      maxLength={8}
-                      className="w-full bg-white/5 border border-purple-500/20 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 font-mono text-lg tracking-widest text-center uppercase transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-300 mb-1 block">
-                      Game ID <span className="text-gray-500">(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={joinCodeGameId}
-                      onChange={(e) =>
-                        setJoinCodeGameId(e.target.value.replace(/[^0-9]/g, ""))
-                      }
-                      placeholder="Auto-detected from code"
-                      className="w-full bg-white/5 border border-purple-500/20 rounded-xl px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 transition-all"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      setShowJoinCodeModal(false);
-                      setJoinCodeInput("");
-                      setJoinCodeGameId("");
-                    }}
-                    className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-gray-300 font-medium transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={joinGameWithCode}
-                    disabled={
-                      joinCodeInput.length !== 8 ||
-                      joiningGameId !== null
-                    }
-                    className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 rounded-xl text-white font-medium transition-all disabled:opacity-50"
-                  >
-                    {joiningGameId !== null ? "Joining..." : "Join Game"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </>
       )}
       <Toaster />
