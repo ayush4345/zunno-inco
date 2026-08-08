@@ -41,6 +41,16 @@ contract ZunnoIncoTest is IncoTest {
         vm.prank(alice);
         game.startGame(gameId);
 
+        (uint16 dealt, uint16 total, bool ready) = game.getDealProgress(gameId);
+        assertEq(dealt, 0);
+        assertEq(total, 14);
+        assertFalse(ready);
+        while (!ready) {
+            game.dealCards(gameId, 4);
+            (dealt, total, ready) = game.getDealProgress(gameId);
+        }
+        assertEq(dealt, total);
+
         assertEq(address(game).balance, 2 ether);
         assertEq(game.feeBalance(), 0);
 
@@ -57,6 +67,19 @@ contract ZunnoIncoTest is IncoTest {
         assertEq(handSizes[0], 7);
         assertEq(handSizes[1], 7);
         assertTrue(inco.isRevealed(game.getOpeningHandle()));
+    }
+
+    function testDealBatchIsBounded() public {
+        vm.prank(alice);
+        uint256 gameId = game.createGame(0);
+        vm.prank(bob);
+        game.joinGame(gameId);
+        game.fundFees{value: game.deckFee(108)}();
+        vm.prank(alice);
+        game.startGame(gameId);
+
+        vm.expectRevert("bad batch");
+        game.dealCards(gameId, 5);
     }
 
     function testOnlyCreatorStartsAndGameStateListsPlayers() public {
