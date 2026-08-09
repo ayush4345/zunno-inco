@@ -5,14 +5,17 @@ import {euint256, e} from "@inco/lightning/src/Lib.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {ConfidentialDeck} from "./kit/ConfidentialDeck.sol";
 import {UnoCards} from "./UnoCards.sol";
+import {MegapotJackpot} from "./MegapotJackpot.sol";
 
 /// @title ZunnoInco — Confidential UNO on Inco Lightning
 /// @notice Hands are secret on-chain (ConfidentialDeck `_dealTo`). A card's
 ///         value only enters on-chain state when someone submits a covalidator
 ///         attestation (`_verifyValue`) — that's how "play" and "opening" work.
 /// @dev Every game owns an independent encrypted deck and draw cursor. Fund the
-///      contract for each shuffle via `fundFees()`.
-contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
+///      contract for each shuffle via `fundFees()`. Every started table also
+///      buys a Megapot lottery ticket (USDC) via the inherited MegapotJackpot
+///      module — see `enterJackpot` / `claimGameJackpot`.
+contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot {
     using e for euint256;
 
     uint16 constant DECK = 108; // full UNO deck
@@ -20,7 +23,6 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
     uint8 public constant MAX_DEAL_BATCH = 4;
     // ponytail: one 108-card shoe; add encrypted discard reshuffling if long games exhaust it.
     uint256 public constant MAX_PLAYERS = 4;
-    uint16 constant RAKE_BPS = 300; // 3% -> Megapot jackpot (see BUILD_PLAN)
 
     enum Phase {
         Waiting,
@@ -220,6 +222,21 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         g.phase = Phase.Opening;
         lobbies[gameId].startTime = block.timestamp;
         emit GameStarted(gameId);
+
+        // Enter this table into Megapot's daily jackpot (USDC). Best-effort: an
+        // external self-call wrapped in try/catch so an under-funded jackpot or a
+        // Megapot revert can NEVER block the confidential game from starting.
+        try this.enterJackpot(gameId) {} catch {}
+    }
+
+    /// @notice Buy this table's Megapot lottery ticket (idempotent per game).
+    ///         Called automatically by `startGame`; also callable directly to
+    ///         retry after the contract is funded with USDC via `fundJackpot`.
+    function enterJackpot(uint256 gameId) external {
+        Game storage g = games[gameId];
+        require(gameId != 0 && gameId <= nextGameId, "invalid game");
+        require(g.phase != Phase.Waiting, "not started");
+        _enterJackpot(gameId, g.players);
     }
 
     /// @notice Deal at most four encrypted cards per transaction to stay below
@@ -347,8 +364,9 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard {
         lobbies[gameId].endTime = block.timestamp;
         g.winner = winner;
         uint256 payout = g.pot;
-        // uint256 rake = payout * RAKE_BPS / 10_000; payout -= rake;
-        // TODO(Megapot): buy jackpot tickets with `rake` for g.players (BUILD_PLAN).
+        // Note: the ETH escrow pays out in full to the winner. The Megapot jackpot
+        // is a SEPARATE USDC entry bought at `startGame` (see MegapotJackpot); its
+        // winnings are distributed via `claimGameJackpot` after the daily drawing.
         g.pot = 0;
         (bool ok,) = winner.call{value: payout}("");
         require(ok, "payout");
