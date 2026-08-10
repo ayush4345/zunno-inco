@@ -1,15 +1,33 @@
-# client — Zunno × Inco (frontend)
+# Zunno × Inco client
 
-Reuse the existing React client from **Khel-fun/ZunnoGame** (`main-v-02` → `/client`) and add Inco confidentiality.
+The frontend is a two-player confidential UNO experience designed around encrypted
+hands and Inco's attested public-card reveals.
 
-## Port steps
-1. Copy `ZunnoGame/client` here (UI, game board, wallet connect).
-2. Add `@inco/lightning-js`:
-   - **Encrypt inputs** before sending on-chain (`zap.encrypt(...)`).
-   - **User-decrypt own hand** client-side (fast, private) for the `allow`ed player.
-3. On **play**, request an **attested decryption** of the chosen card and submit it to `playCard(...)`.
-4. UX: show a "revealing…" state during public decryptions (play / showdown / first discard) since covalidator consensus adds ~10–30s.
+## Run locally
 
-## Notes
-- Wallet/tx via `viem`; target **Base Sepolia** (`supportedChains.baseSepolia`).
-- Keep Socket.io (from ZunnoGame) for snappy turn/lobby UX; secrets never touch it.
+```bash
+npm install
+npm run dev
+```
+
+## Current UI flow
+
+The initial experience ships a safe local UI demo for the lobby, encrypted-deal,
+private-card selection, public-reveal status, settlement preview, and opt-in sound.
+It deliberately does **not** send a transaction or expose hand data.
+
+## Audio credits
+
+- `public/audio/arcade-loop.mp3` — “Arcade_Soundtracks” by hanzlab, CC0:
+  https://opengameart.org/content/arcadesoundtracks
+- Interaction effects in `public/audio/*.ogg` — Kenney casino audio pack, CC0;
+  the included `KENNEY-LICENSE.txt` preserves the source license.
+
+Wire `@inco/lightning-js`, `viem`, and the deployed contract only after the
+contract's unfinished encryption/deck/UNO-rule paths have been implemented and
+verified. The current Solidity contract remains a documented scaffold.
+
+```bash
+npm test
+npm run build
+```
