@@ -51,6 +51,7 @@ contract MockJackpot {
 
     function setPrize(uint256 p) external {
         prize = p;
+        usdc.mint(address(this), p); // fund the mock so claimWinnings can actually pay out
     }
 
     function ticketPrice() external view returns (uint256) {

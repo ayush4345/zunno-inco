@@ -59,7 +59,18 @@ type PendingColor =
   | { kind: "opening"; attested: AttestedValue }
   | { kind: "play"; handIndex: number };
 
+type JackpotState = { entered: boolean; claimed: boolean; ticketCount: number };
+type MegapotRound = { potUsdc: number; endsAt: string };
+
 const shortAddress = (value: string) => `${value.slice(0, 6)}…${value.slice(-4)}`;
+
+const formatCountdown = (endsAt: string) => {
+  const ms = new Date(endsAt).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return "drawing now";
+  const hours = Math.floor(ms / 3_600_000);
+  const minutes = Math.floor((ms % 3_600_000) / 60_000);
+  return `${hours}h ${minutes}m`;
+};
 
 const errorMessage = (error: unknown) => {
   if (error && typeof error === "object" && "shortMessage" in error) {
@@ -93,6 +104,8 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingColor, setPendingColor] = useState<PendingColor | null>(null);
+  const [jackpot, setJackpot] = useState<JackpotState | null>(null);
+  const [megapotRound, setMegapotRound] = useState<MegapotRound | null>(null);
   const cardCache = useRef(new Map<string, PeekedCard>());
   const handSession = useRef<HandDecryptSession | null>(null);
   const previousGame = useRef<ChainGame | null>(null);
@@ -115,7 +128,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   const refresh = useCallback(async () => {
     if (!publicClient || !contractAddress) return null;
     try {
-      const [state, sizes, deal] = await Promise.all([
+      const [state, sizes, deal, jackpotState] = await Promise.all([
         publicClient.readContract({
           address: contractAddress,
           abi: unoGameABI,
@@ -134,7 +147,18 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
           functionName: "getDealProgress",
           args: [gameId],
         }),
+        publicClient.readContract({
+          address: contractAddress,
+          abi: unoGameABI,
+          functionName: "getGameJackpot",
+          args: [gameId],
+        }),
       ]);
+      setJackpot({
+        ticketCount: jackpotState[0].length,
+        entered: jackpotState[2],
+        claimed: jackpotState[3],
+      });
 
       const nextGame: ChainGame = {
         players: [...state[0]],
@@ -227,7 +251,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   }, [decryptHandles, handles, toast]);
 
   const transact = useCallback(
-    async (label: string, data: Hex, decryptAfter = false) => {
+    async (label: string, data: Hex, decryptAfter = false, gas?: bigint) => {
       if (!address || !publicClient || !walletClient?.account) {
         throw new Error("Connect your browser wallet first");
       }
@@ -238,7 +262,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
       try {
         await publicClient.call({ account: address, to: contractAddress, data });
         setBusy(`${label}: confirm in wallet…`);
-        const hash = await sendTransactionAsync({ to: contractAddress, data, chainId: CHAIN_ID });
+        const hash = await sendTransactionAsync({ to: contractAddress, data, chainId: CHAIN_ID, gas });
         setBusy(`${label}: confirming on Base Sepolia…`);
         const receipt = await publicClient.waitForTransactionReceipt({ hash });
         if (receipt.status !== "success") throw new Error("Transaction reverted");
@@ -317,13 +341,36 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
     return () => window.clearInterval(interval);
   }, [refresh]);
 
+  useEffect(() => {
+    const loadRound = async () => {
+      try {
+        const res = await fetch("https://api.megapot.io/v1/rounds/active");
+        if (!res.ok) return;
+        const round = await res.json();
+        setMegapotRound({
+          potUsdc: Number(round.prize_pool.amount) / 10 ** round.prize_pool.decimals,
+          endsAt: round.ended_at,
+        });
+      } catch {
+        // Data API is best-effort — the game never blocks on it.
+      }
+    };
+    void loadRound();
+    const interval = window.setInterval(() => void loadRound(), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   const startGame = async () => {
     const data = encodeFunctionData({
       abi: unoGameABI,
       functionName: "startGame",
       args: [gameId],
     });
-    await transact("Start game", data);
+    // startGame's internal Megapot entry is wrapped in try/catch, so eth_estimateGas
+    // returns the lowest gas that lets the OUTER call succeed — the path where the
+    // inner call starves under EIP-150 and silently skips the jackpot. Force a
+    // generous limit (measured ~1.5M for shuffle + ticket buy) so it actually enters.
+    await transact("Start game", data, false, 4_000_000n);
   };
 
   const dealCards = async () => {
@@ -407,6 +454,15 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
     await transact("Draw card", data, true);
   };
 
+  const claimJackpot = async () => {
+    const data = encodeFunctionData({
+      abi: unoGameABI,
+      functionName: "claimGameJackpot",
+      args: [gameId],
+    });
+    await transact("Claim jackpot", data);
+  };
+
   const selectColor = async (color: string) => {
     const pending = pendingColor;
     setPendingColor(null);
@@ -438,7 +494,16 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   const shell = (content: React.ReactNode) => (
     <div style={{ minHeight: "100svh", position: "relative", overflow: "hidden" }}>
       <GameBackground turn={turn} currentColor="B" currentUser={currentUser} totalPlayers={game?.players.length || 2} />
-      <div style={{ position: "relative", zIndex: 20 }}>{content}</div>
+      <div style={{ position: "relative", zIndex: 20 }}>
+        <JackpotBanner
+          round={megapotRound}
+          jackpot={jackpot}
+          finished={game?.phase === PHASE.finished}
+          busy={!!busy}
+          onClaim={() => void claimJackpot()}
+        />
+        {content}
+      </div>
       <Toaster />
     </div>
   );
@@ -508,6 +573,13 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         currentUser={currentUser}
         totalPlayers={game.players.length}
       />
+      <JackpotBanner
+        round={megapotRound}
+        jackpot={jackpot}
+        finished={game.phase === PHASE.finished}
+        busy={!!busy}
+        onClaim={() => void claimJackpot()}
+      />
       <div style={{ position: "relative", zIndex: 10 }}>
         <GameScreen
           currentUser={currentUser}
@@ -557,6 +629,54 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         onSubmit={(color) => void selectColor(color)}
       />
       <Toaster />
+    </div>
+  );
+}
+
+function JackpotBanner({
+  round,
+  jackpot,
+  finished,
+  busy,
+  onClaim,
+}: {
+  round: MegapotRound | null;
+  jackpot: JackpotState | null;
+  finished: boolean;
+  busy: boolean;
+  onClaim: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 8,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 85,
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+        padding: "0.4rem 0.9rem",
+        borderRadius: 999,
+        background: "rgba(0,0,0,.72)",
+        color: "white",
+        fontFamily: "monospace",
+        fontSize: "0.8rem",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span>
+        🎰 Megapot{" "}
+        {round ? `$${round.potUsdc.toLocaleString(undefined, { maximumFractionDigits: 0 })} · draws in ${formatCountdown(round.endsAt)}` : "loading…"}
+      </span>
+      {jackpot?.entered && <span style={{ opacity: 0.75 }}>· table ticket bought ({jackpot.ticketCount})</span>}
+      {jackpot?.entered && !jackpot.claimed && finished && (
+        <button className="glossy-button glossy-button-blue" style={{ padding: "0.2rem 0.7rem" }} disabled={busy} onClick={onClaim}>
+          Claim jackpot
+        </button>
+      )}
+      {jackpot?.claimed && <span style={{ opacity: 0.75 }}>· claimed</span>}
     </div>
   );
 }

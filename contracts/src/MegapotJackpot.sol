@@ -25,7 +25,7 @@ interface IMegapotJackpot {
 /// @notice Confidential UNO settles its ETH pot as usual; SEPARATELY, each game
 ///         buys one random Megapot ticket in USDC, owned by this contract. If the
 ///         ticket wins the daily draw, `claimGameJackpot` splits the USDC across
-///         that game's players. The operator (Khel.fun) is set as the Megapot
+///         that game's players. The operator wallet is set as the Megapot
 ///         `referrer`, earning purchase fees + win share.
 /// @dev Defaults are Base Sepolia (chain 84532). The admin can repoint to mainnet
 ///      and set the real referrer wallet. Ticket buys are best-effort: if the
@@ -57,7 +57,7 @@ abstract contract MegapotJackpot {
 
     constructor() {
         megapotAdmin = msg.sender;
-        jackpotReferrers.push(msg.sender); // default referrer = deployer; repoint to Khel.fun wallet
+        jackpotReferrers.push(msg.sender); // default referrer = deployer; repoint to the operator wallet
     }
 
     modifier onlyMegapotAdmin() {

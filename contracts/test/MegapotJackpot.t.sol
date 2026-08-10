@@ -16,7 +16,7 @@ contract MegapotJackpotTest is Test {
 
     address alice = address(0xA11CE);
     address bob = address(0xB0B);
-    address operator = address(0x0FE); // Khel.fun referrer wallet
+    address operator = address(0x0FE); // operator referrer wallet
 
     function setUp() public {
         usdc = new MockUSDC();

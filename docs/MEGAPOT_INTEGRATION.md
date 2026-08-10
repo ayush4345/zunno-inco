@@ -11,7 +11,7 @@ to convert the ETH escrow. This qualifies the build for the **Megapot track**.
 2. `enterJackpot` → `_enterJackpot` approves USDC and calls
    `JackpotRandomTicketBuyer.buyTickets(1, address(this), referrers, split, source)`.
    The ticket (ERC-721) is **owned by the contract**; the game's players are stored.
-3. The **operator (Khel.fun) wallet is the Megapot `referrer`** → earns purchase
+3. The **operator wallet is the Megapot `referrer`** → earns purchase
    fees + a share of any win. Set it via `setJackpotReferrers([...])`.
 4. After the daily drawing settles, `claimGameJackpot(gameId)` claims the USDC and
    **splits it equally** across that game's players (remainder to the last player).
