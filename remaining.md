@@ -17,7 +17,7 @@
 - [x] `forge test` green — `ZunnoInco.t.sol` (7 tests) + `UnoCards.t.sol` (10 tests), all passing.
 - [x] Deploy `ZunnoInco` to Base Sepolia (`script/Deploy.s.sol`) → **`0x8Be448437C4f1789230d01f75C64A8B9b980081E`**.
 - [x] `fundFees()` with ETH — done automatically by the deploy script (funded 10 shuffle fees, 0.00216 ETH).
-- [ ] (nice) Verify on Basescan — needs a `BASESCAN_API_KEY`, not present in `contracts/.env`.
+- [x] (nice) Verify on Basescan — [source verified](https://sepolia.basescan.org/address/0x8be448437c4f1789230d01f75c64a8b9b980081e).
 
 ## 2. Contracts — Megapot
 
