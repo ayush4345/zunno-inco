@@ -30,6 +30,21 @@ game pot are independent.
 
 `setMegapotConfig(usdc, jackpot, buyer)` repoints to mainnet (8453) or new deployments.
 
+## Base Mainnet (chain 8453) addresses — verified, not yet wired
+Sourced from `https://llms.megapot.io/` and independently confirmed on-chain
+(2026-08-12: `eth_getCode` shows deployed bytecode at all three via
+`https://mainnet.base.org`; `USDC.decimals()==6`/`symbol()=="USDC"`,
+`Jackpot.ticketPrice()==1_000_000`, matching the testnet price). `ZunnoInco`
+itself has **not** been deployed to mainnet yet (only Base Sepolia — see
+`client/.env.example`), so nothing needs wiring until that happens; once it is,
+call `setMegapotConfig` with these:
+
+| Contract | Address |
+|---|---|
+| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Jackpot | `0x3bAe643002069dBCbcd62B1A4eb4C4A397d042a2` |
+| JackpotRandomTicketBuyer | `0xb9560b43b91dE2c1DaF5dfbb76b2CFcDaFc13aBd` |
+
 ## Funding & operating
 - The contract must hold **USDC** to buy tickets. Fund via `fundJackpot(amount)`
   (needs a prior USDC `approve` to the ZunnoInco contract). If unfunded, entry is
@@ -59,10 +74,9 @@ Data API (`https://api.megapot.io/v1/rounds/active`), this table's ticket via
 `getGameJackpot(gameId)`, and a claim button wired to `claimGameJackpot(gameId)`.
 
 ## Remaining work
-- **Mainnet addresses**: only Base Sepolia (84532) defaults are baked into
-  `MegapotJackpot`. Before a mainnet deploy, get the official Base (8453) USDC /
-  Jackpot / JackpotRandomTicketBuyer addresses from Megapot directly (don't trust
-  a guess) and have `megapotAdmin` call `setMegapotConfig(usdc, jackpot, buyer)`.
+- **Mainnet deploy**: `ZunnoInco` only exists on Base Sepolia today. Deploying
+  to Base mainnet is a real transaction from a funded wallet — the verified
+  addresses above are ready for `setMegapotConfig` once that happens.
 - **Funding**: the contract needs real USDC to buy tickets — `approve` the
   contract then call `fundJackpot(amount)` from a funded wallet. This is a real
   on-chain transaction and has to be done by whoever holds the operator key; it
