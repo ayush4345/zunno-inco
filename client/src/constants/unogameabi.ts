@@ -152,6 +152,60 @@ export const unoGameABI = [
     outputs: [{ name: "", type: "bytes32" }],
     stateMutability: "view",
   },
+  // ── Megapot jackpot ─────────────────────────────────────────────────────
+  {
+    type: "function",
+    name: "enterJackpot",
+    inputs: [{ name: "gameId", type: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "claimGameJackpot",
+    inputs: [{ name: "gameId", type: "uint256" }],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "getGameJackpot",
+    inputs: [{ name: "gameId", type: "uint256" }],
+    outputs: [
+      { name: "ticketIds", type: "uint256[]" },
+      { name: "players", type: "address[]" },
+      { name: "entered", type: "bool" },
+      { name: "claimed", type: "bool" },
+    ],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "JackpotEntered",
+    inputs: [
+      { name: "gameId", type: "uint256", indexed: true },
+      { name: "ticketCount", type: "uint256", indexed: false },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "JackpotSkipped",
+    inputs: [
+      { name: "gameId", type: "uint256", indexed: true },
+      { name: "reason", type: "string", indexed: false },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "JackpotClaimed",
+    inputs: [
+      { name: "gameId", type: "uint256", indexed: true },
+      { name: "amount", type: "uint256", indexed: false },
+    ],
+    anonymous: false,
+  },
 ] as const;
 
 // Legacy Noir verifier helpers remain available for the optional computer-game panel.
