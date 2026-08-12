@@ -20,7 +20,7 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot {
 
     uint16 constant DECK = 108; // full UNO deck
     uint8 constant START_HAND = 4;
-    uint8 public constant MAX_DEAL_BATCH = 4;
+    uint8 public constant MAX_DEAL_BATCH = 8;
     // ponytail: one 108-card shoe; add encrypted discard reshuffling if long games exhaust it.
     uint256 public constant MAX_PLAYERS = 4;
 
@@ -239,8 +239,10 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot {
         _enterJackpot(gameId, g.players);
     }
 
-    /// @notice Deal at most four encrypted cards per transaction to stay below
-    ///         Base Sepolia's transaction gas cap. Anyone may advance the deal;
+    /// @notice Deal at most `MAX_DEAL_BATCH` encrypted cards per transaction —
+    ///         real dealCards txs on Base Sepolia run ~120k gas/card, far below
+    ///         the network's ~1.2B block gas limit, so 8 covers a full 2-player
+    ///         deal (2 * START_HAND) in one call. Anyone may advance the deal;
     ///         recipients and order are fixed by contract state.
     function dealCards(uint256 gameId, uint8 count) external {
         Game storage g = games[gameId];

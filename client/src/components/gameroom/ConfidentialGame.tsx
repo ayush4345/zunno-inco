@@ -377,7 +377,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
     const data = encodeFunctionData({
       abi: unoGameABI,
       functionName: "dealCards",
-      args: [gameId, 4],
+      args: [gameId, 8],
     });
     await transact("Deal encrypted cards", data);
   };
@@ -549,7 +549,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
           disabled={!!busy}
           onClick={() => void (game.openingReady ? revealOpening() : dealCards())}
         >
-          {busy || (game.openingReady ? "Reveal opening card" : `Deal next ${Math.min(4, remaining)} cards`)}
+          {busy || (game.openingReady ? "Reveal opening card" : `Deal next ${Math.min(8, remaining)} cards`)}
         </button>
       </StatusPanel>,
     );

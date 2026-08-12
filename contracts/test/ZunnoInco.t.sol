@@ -114,7 +114,7 @@ contract ZunnoIncoTest is IncoTest {
         game.startGame(gameId);
 
         vm.expectRevert("bad batch");
-        game.dealCards(gameId, 5);
+        game.dealCards(gameId, 9);
     }
 
     function testOnlyCreatorStartsAndGameStateListsPlayers() public {
