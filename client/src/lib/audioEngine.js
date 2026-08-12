@@ -1,6 +1,11 @@
 "use client";
 
-import { getSoundAsset, getSoundCue } from "./gameExperience.mjs";
+import {
+  getMusicSettings,
+  getSfxSettings,
+  getSoundAsset,
+  getSoundCue,
+} from "./gameExperience.mjs";
 
 let audioContext;
 let backgroundTrack;
@@ -35,24 +40,29 @@ function playNoise(context, character, startAt, duration, volume) {
 }
 
 export function playGameSound(event, settings) {
-  if (!settings.canPlay) return;
+  const sound = getSfxSettings(settings);
+  if (!sound.canPlay) return;
   const effect = new Audio(getSoundAsset(event));
-  effect.volume = Math.min(1, settings.volume * 0.7);
-  effect.play().then(() => duckBackground()).catch(() => playSynthFallback(event, settings));
+  effect.volume = Math.min(1, sound.volume * 0.7);
+  effect.play().then(() => duckBackground()).catch(() => playSynthFallback(event, sound));
 }
 
 export function setBackgroundMusic(settings) {
-  if (typeof window === "undefined") return;
+  const music = getMusicSettings(settings);
+  if (typeof window === "undefined" || !music.canPlay) {
+    backgroundTrack?.pause();
+    return Promise.resolve({ started: false });
+  }
   backgroundTrack ??= new Audio("/audio/arcade-loop.mp3");
   backgroundTrack.loop = true;
-  backgroundTrack.volume = Math.min(0.22, settings.volume * 0.28);
+  backgroundTrack.volume = Math.min(0.22, music.volume * 0.28);
 
-  if (!settings.canPlay) {
-    backgroundTrack.pause();
-    return;
-  }
-
-  backgroundTrack.play().catch(() => {});
+  return backgroundTrack.play()
+    .then(() => ({ started: true }))
+    .catch((error) => ({
+      started: false,
+      reason: error?.name === "NotAllowedError" ? "blocked" : "failed",
+    }));
 }
 
 function duckBackground() {

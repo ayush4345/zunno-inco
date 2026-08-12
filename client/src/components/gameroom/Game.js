@@ -706,7 +706,6 @@ const Game = ({
         width: "100vw",
         height: "100vh",
         overflow: "hidden",
-        marginTop: "-27px",
       }}
     >
       <GameBackground

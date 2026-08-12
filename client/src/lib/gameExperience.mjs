@@ -74,9 +74,48 @@ export function transitionMatch(match, event) {
   return next;
 }
 
-export function getSoundSettings(settings) {
+export function normalizeSoundSettings(settings) {
+  const source = settings && typeof settings === "object" ? settings : {};
+  const isLegacy = Object.hasOwn(source, "enabled");
+  const defaultEnabled = true;
+  const legacyEnabled = typeof source.enabled === "boolean" ? source.enabled : defaultEnabled;
+  const musicEnabled = typeof source.musicEnabled === "boolean"
+    ? source.musicEnabled
+    : isLegacy
+      ? legacyEnabled
+      : defaultEnabled;
+  const sfxEnabled = typeof source.sfxEnabled === "boolean"
+    ? source.sfxEnabled
+    : isLegacy
+      ? legacyEnabled
+      : defaultEnabled;
+  const volume = typeof source.volume === "number" && Number.isFinite(source.volume)
+    ? Math.min(1, Math.max(0, source.volume))
+    : 0.65;
+
+  return { musicEnabled, sfxEnabled, volume };
+}
+
+export function getMusicSettings(settings) {
+  const normalized = normalizeSoundSettings(settings);
   return {
-    canPlay: Boolean(settings.enabled),
-    volume: settings.enabled ? settings.volume : 0,
+    canPlay: normalized.musicEnabled,
+    volume: normalized.musicEnabled ? normalized.volume : 0,
   };
+}
+
+export function getSfxSettings(settings) {
+  const normalized = normalizeSoundSettings(settings);
+  return {
+    canPlay: normalized.sfxEnabled,
+    volume: normalized.sfxEnabled ? normalized.volume : 0,
+  };
+}
+
+export function getSoundSettings(settings) {
+  return getMusicSettings(settings);
+}
+
+export function getDealingStatus(elapsedMs) {
+  return elapsedMs < 475 ? "Creating private table" : "Encrypting your hand";
 }

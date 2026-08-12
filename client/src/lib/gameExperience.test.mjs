@@ -7,7 +7,11 @@ import {
   getSoundCue,
   getRevealState,
   getRewardTier,
+  getDealingStatus,
+  getMusicSettings,
   getSoundSettings,
+  getSfxSettings,
+  normalizeSoundSettings,
   recordEvent,
   transitionMatch,
 } from "./gameExperience.mjs";
@@ -41,15 +45,59 @@ test("failed public reveal offers recovery without ending the match", () => {
   });
 });
 
-test("sound is silent until the player enables it", () => {
-  assert.deepEqual(getSoundSettings({ enabled: false, volume: 0.75 }), {
-    canPlay: false,
+test("legacy audio settings enable or disable both categories", () => {
+  assert.deepEqual(normalizeSoundSettings({ enabled: false, volume: 0.75 }), {
+    musicEnabled: false,
+    sfxEnabled: false,
+    volume: 0.75,
+  });
+  assert.deepEqual(normalizeSoundSettings({ enabled: true, volume: 0.75 }), {
+    musicEnabled: true,
+    sfxEnabled: true,
+    volume: 0.75,
+  });
+});
+
+test("audio settings normalize partial and malformed saved preferences", () => {
+  assert.deepEqual(normalizeSoundSettings({ musicEnabled: false, volume: "loud" }), {
+    musicEnabled: false,
+    sfxEnabled: true,
+    volume: 0.65,
+  });
+  assert.deepEqual(normalizeSoundSettings(null), {
+    musicEnabled: true,
+    sfxEnabled: true,
+    volume: 0.65,
+  });
+  assert.deepEqual(normalizeSoundSettings({ enabled: "yes", volume: -2 }), {
+    musicEnabled: true,
+    sfxEnabled: true,
     volume: 0,
   });
-  assert.deepEqual(getSoundSettings({ enabled: true, volume: 0.75 }), {
+});
+
+test("music and sound effects have independent playback permissions", () => {
+  const settings = { musicEnabled: true, sfxEnabled: false, volume: 0.75 };
+
+  assert.deepEqual(getMusicSettings(settings), {
     canPlay: true,
     volume: 0.75,
   });
+  assert.deepEqual(getSfxSettings(settings), {
+    canPlay: false,
+    volume: 0,
+  });
+  assert.deepEqual(getSoundSettings(settings), {
+    canPlay: true,
+    volume: 0.75,
+  });
+});
+
+test("dealing status advances halfway through the existing deal delay", () => {
+  assert.equal(getDealingStatus(0), "Creating private table");
+  assert.equal(getDealingStatus(474), "Creating private table");
+  assert.equal(getDealingStatus(475), "Encrypting your hand");
+  assert.equal(getDealingStatus(949), "Encrypting your hand");
 });
 
 test("game events resolve to distinct layered arcade cues", () => {

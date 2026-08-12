@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import DealingLoader from "@/components/DealingLoader";
+import SoundControls from "@/components/SoundControls";
 import {
   applyCardPlay,
+  getDealingStatus,
   getRevealState,
   getRewardTier,
-  getSoundSettings,
+  normalizeSoundSettings,
   recordEvent,
   transitionMatch,
 } from "@/lib/gameExperience.mjs";
@@ -24,7 +27,9 @@ const initialHand = [
 export default function GameExperience() {
   const [match, setMatch] = useState({ phase: "waiting", reveal: "idle" });
   const [connected, setConnected] = useState(false);
-  const [sound, setSound] = useState({ enabled: false, volume: 0.65 });
+  const [sound, setSound] = useState({ musicEnabled: true, sfxEnabled: true, volume: 0.65 });
+  const [isSoundHydrated, setIsSoundHydrated] = useState(false);
+  const [dealingStatus, setDealingStatus] = useState(getDealingStatus(0));
   const [playerHand, setPlayerHand] = useState(initialHand);
   const [selectedCard, setSelectedCard] = useState(null);
   const [streak, setStreak] = useState(0);
@@ -34,24 +39,35 @@ export default function GameExperience() {
   const [toast, setToast] = useState("Create or join a two-player table.");
 
   const reveal = getRevealState(match.reveal);
-  const soundSettings = useMemo(() => getSoundSettings(sound), [sound]);
+  const audioRevision = useRef(0);
+  const dealTimers = useRef([]);
   const isActive = match.phase === "active";
   const isFinished = match.phase === "finished";
 
   useEffect(() => {
     const savedSound = window.localStorage.getItem("zunno-sound");
-    if (!savedSound) return;
-    try {
-      setSound(JSON.parse(savedSound));
-    } catch {
-      window.localStorage.removeItem("zunno-sound");
+    if (savedSound) {
+      try {
+        setSound(normalizeSoundSettings(JSON.parse(savedSound)));
+      } catch {
+        window.localStorage.removeItem("zunno-sound");
+      }
     }
+    setIsSoundHydrated(true);
   }, []);
 
   useEffect(() => {
+    if (!isSoundHydrated) return;
     window.localStorage.setItem("zunno-sound", JSON.stringify(sound));
-    setBackgroundMusic(getSoundSettings(sound));
-  }, [sound]);
+    const revision = ++audioRevision.current;
+    setBackgroundMusic(sound).then((result) => {
+      if (!result.started && result.reason && audioRevision.current === revision) {
+        setToast(result.reason === "blocked" ? "Music needs a browser gesture to start." : "Music could not be started.");
+      }
+    });
+  }, [isSoundHydrated, sound]);
+
+  useEffect(() => () => dealTimers.current.forEach((timer) => window.clearTimeout(timer)), []);
 
   useEffect(() => {
     if (match.reveal !== "securing") return;
@@ -66,29 +82,34 @@ export default function GameExperience() {
         return result.hand;
       });
       setSelectedCard(null);
-      playGameSound("verified", soundSettings);
+      playGameSound("verified", sound);
     }, 2400);
     return () => window.clearTimeout(timer);
-  }, [match.reveal, score, selectedCard, soundSettings, streak]);
+  }, [match.reveal, score, selectedCard, sound, streak]);
 
   function connectWallet() {
     setConnected(true);
     setToast("Wallet connected. You can now enter the confidential table.");
     setEvents((current) => recordEvent(current, { label: "Wallet linked", tone: "ui-tap" }));
-    playGameSound("ui-tap", soundSettings);
+    playGameSound("ui-tap", sound);
   }
 
   function startMatch() {
     setMatch({ phase: "dealing", reveal: "idle" });
-    setToast("Encrypting seven cards for each player…");
+    setDealingStatus(getDealingStatus(0));
+    setToast("Creating a private table…");
     setEvents((current) => recordEvent(current, { label: "Private deal started", tone: "deal" }));
-    playGameSound("deal", soundSettings);
-    window.setTimeout(() => {
+    playGameSound("deal", sound);
+    dealTimers.current.forEach((timer) => window.clearTimeout(timer));
+    dealTimers.current = [
+      window.setTimeout(() => setDealingStatus(getDealingStatus(475)), 475),
+      window.setTimeout(() => {
       setMatch({ phase: "active", reveal: "idle" });
       setToast("Your turn. Your hand is private to you.");
       setEvents((current) => recordEvent(current, { label: "Your turn", tone: "ui-tap" }));
-      playGameSound("ui-tap", soundSettings);
-    }, 950);
+      playGameSound("ui-tap", sound);
+    }, 950),
+    ];
   }
 
   function selectCard(index) {
@@ -97,7 +118,7 @@ export default function GameExperience() {
     setMatch((current) => transitionMatch(current, "card-selected"));
     setToast("Card selected locally. Only you can see it right now.");
     setEvents((current) => recordEvent(current, { label: "Card locked privately", tone: "card-play" }));
-    playGameSound("card-play", soundSettings);
+    playGameSound("card-play", sound);
   }
 
   function revealCard() {
@@ -105,7 +126,7 @@ export default function GameExperience() {
     setMatch((current) => transitionMatch(current, "reveal-requested"));
     setToast("Securing the public reveal with Inco covalidators…");
     setEvents((current) => recordEvent(current, { label: "Reveal secured", tone: "reveal-pulse" }));
-    playGameSound("reveal-pulse", soundSettings);
+    playGameSound("reveal-pulse", sound);
   }
 
   function drawCard() {
@@ -116,7 +137,7 @@ export default function GameExperience() {
     ]);
     setToast("Encrypted card drawn. It stays visible only in your hand.");
     setEvents((current) => recordEvent(current, { label: "Private card drawn", tone: "draw" }));
-    playGameSound("draw", soundSettings);
+    playGameSound("draw", sound);
   }
 
   function finishMatch() {
@@ -124,13 +145,13 @@ export default function GameExperience() {
     setToast("Match settled. Payout confirmation would appear here.");
     setCelebrating(true);
     setEvents((current) => recordEvent(current, { label: "Settlement preview", tone: "victory" }));
-    playGameSound("victory", soundSettings);
+    playGameSound("victory", sound);
   }
 
   function retryReveal() {
     setMatch((current) => transitionMatch(current, "card-selected"));
     setToast("Ready to retry the attested reveal.");
-    playGameSound("ui-tap", soundSettings);
+    playGameSound("ui-tap", sound);
   }
 
   return (
@@ -145,36 +166,19 @@ export default function GameExperience() {
           <span>ZUNNO <i>×</i> INCO</span>
         </a>
         <div className="topbar-actions">
-          <label className="sound-control">
-            <span aria-hidden="true">{sound.enabled ? "♫" : "◌"}</span>
-            <input
-              aria-label="Sound volume"
-              disabled={!sound.enabled}
-              max="1"
-              min="0"
-              onChange={(event) =>
-                setSound((current) => ({ ...current, volume: Number(event.target.value) }))
-              }
-              step="0.05"
-              type="range"
-              value={sound.volume}
-            />
-          </label>
-          <button
-            className={`sound-toggle ${sound.enabled ? "is-on" : ""}`}
-            onClick={() => {
-              setSound((current) => ({ ...current, enabled: !current.enabled }));
-              setToast(sound.enabled ? "Sound disabled." : "Sound enabled after your gesture.");
-              if (!sound.enabled) {
-                const enabledSound = { canPlay: true, volume: sound.volume };
-                setBackgroundMusic(enabledSound);
-                playGameSound("ui-tap", enabledSound);
-              }
+          <SoundControls
+            onMusicToggle={() => {
+              setSound((current) => ({ ...current, musicEnabled: !current.musicEnabled }));
+              setToast(sound.musicEnabled ? "Music disabled." : "Music enabled.");
             }}
-            type="button"
-          >
-            {sound.enabled ? "Sound on" : "Enable sound"}
-          </button>
+            onSfxToggle={() => {
+              setSound((current) => ({ ...current, sfxEnabled: !current.sfxEnabled }));
+              setToast(sound.sfxEnabled ? "Sound effects disabled." : "Sound effects enabled.");
+              if (!sound.sfxEnabled) playGameSound("ui-tap", { ...sound, sfxEnabled: true });
+            }}
+            onVolumeChange={(volume) => setSound((current) => ({ ...current, volume }))}
+            sound={sound}
+          />
           <button
             className={`wallet-button ${connected ? "is-connected" : ""}`}
             onClick={connectWallet}
@@ -285,7 +289,7 @@ export default function GameExperience() {
             </div>
             <div className="table-actions">
               {match.phase === "waiting" && <button className="primary-action" disabled={!connected} onClick={startMatch} type="button">Start encrypted deal <span>→</span></button>}
-              {match.phase === "dealing" && <button className="primary-action" disabled type="button">Dealing private hands…</button>}
+              {match.phase === "dealing" && <DealingLoader status={dealingStatus} />}
               {isActive && <button className="finish-link" onClick={finishMatch} type="button">Preview settlement</button>}
               {isFinished && <button className="primary-action" onClick={() => {
                 setMatch({ phase: "waiting", reveal: "idle" });

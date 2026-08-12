@@ -57,7 +57,7 @@ const GameScreen = ({
 
   // For backward compatibility, keep opponentDeck as the first opponent
   const opponentDeck = opponentDecks[0]?.deck || [];
-  const { isSoundMuted, toggleMute } = useSoundProvider();
+  const { isSoundMuted, toggleMute, playCardPlayedSound } = useSoundProvider();
   const [isMusicMuted, setMusicMuted] = useState(true);
   const [playBBgMusic, { pause }] = useSound(bgMusic, { loop: true, volume: 0.18 });
   const [pulseAnimation, setPulseAnimation] = useState(false);
@@ -228,10 +228,13 @@ const GameScreen = ({
             aria-label={isSoundMuted ? "Enable sound effects" : "Mute sound effects"}
             aria-pressed={!isSoundMuted}
             title={isSoundMuted ? "Enable sound effects" : "Mute sound effects"}
-            style={{ width: 42, height: 28, padding: 0, borderRadius: 18 }}
-            onClick={toggleMute}
+            style={{ minWidth: 88, height: 28, padding: "0 10px", borderRadius: 18 }}
+            onClick={() => {
+              toggleMute();
+              if (isSoundMuted) playCardPlayedSound({ volume: 0.35 });
+            }}
           >
-            {isSoundMuted ? "🔇" : "🔊"}
+            {isSoundMuted ? "SFX off" : "SFX on"}
           </button>
           <button
             type="button"
@@ -239,14 +242,14 @@ const GameScreen = ({
             aria-label={isMusicMuted ? "Play background music" : "Pause background music"}
             aria-pressed={!isMusicMuted}
             title={isMusicMuted ? "Play background music" : "Pause background music"}
-            style={{ width: 42, height: 28, padding: 0, borderRadius: 18 }}
+            style={{ minWidth: 92, height: 28, padding: "0 10px", borderRadius: 18 }}
             onClick={() => {
               if (isMusicMuted) playBBgMusic();
               else pause();
               setMusicMuted(!isMusicMuted);
             }}
           >
-            {isMusicMuted ? "♪" : "♫"}
+            {isMusicMuted ? "Music off" : "Music on"}
           </button>
         </span>
       </div>
