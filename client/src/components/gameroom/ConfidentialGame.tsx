@@ -646,6 +646,12 @@ function JackpotBanner({
   busy: boolean;
   onClaim: () => void;
 }) {
+  // ponytail: the ticket's own drawing window isn't tracked on-chain by us, so we
+  // approximate "settled" with the currently-active round's end time — accurate
+  // as long as the game finishes inside the same ~30min drawing it entered.
+  const roundEnded = round ? new Date(round.endsAt).getTime() <= Date.now() : false;
+  const claimReady = finished && jackpot?.entered && !jackpot.claimed && roundEnded;
+
   return (
     <div
       style={{
@@ -655,25 +661,36 @@ function JackpotBanner({
         transform: "translateX(-50%)",
         zIndex: 85,
         display: "flex",
-        gap: 10,
+        flexWrap: "wrap",
+        gap: 8,
         alignItems: "center",
+        justifyContent: "center",
         padding: "0.4rem 0.9rem",
-        borderRadius: 999,
+        borderRadius: 18,
         background: "rgba(0,0,0,.72)",
         color: "white",
         fontFamily: "monospace",
         fontSize: "0.8rem",
-        whiteSpace: "nowrap",
+        maxWidth: "94vw",
+        textAlign: "center",
       }}
     >
       <span>
         🎰 Megapot{" "}
         {round ? `$${round.potUsdc.toLocaleString(undefined, { maximumFractionDigits: 0 })} · draws in ${formatCountdown(round.endsAt)}` : "loading…"}
       </span>
-      {jackpot?.entered && <span style={{ opacity: 0.75 }}>· table ticket bought ({jackpot.ticketCount})</span>}
+      {jackpot?.entered && (
+        <span style={{ opacity: 0.75 }}>· table ticket bought ({jackpot.ticketCount}, sponsored — free for players)</span>
+      )}
       {jackpot?.entered && !jackpot.claimed && finished && (
-        <button className="glossy-button glossy-button-blue" style={{ padding: "0.2rem 0.7rem" }} disabled={busy} onClick={onClaim}>
-          Claim jackpot
+        <button
+          className="glossy-button glossy-button-blue"
+          style={{ padding: "0.2rem 0.7rem" }}
+          disabled={busy || !claimReady}
+          title={claimReady ? undefined : "Waiting for the Megapot drawing to settle"}
+          onClick={onClaim}
+        >
+          {claimReady ? "Claim jackpot" : `Claim opens in ${formatCountdown(round?.endsAt || new Date().toISOString())}`}
         </button>
       )}
       {jackpot?.claimed && <span style={{ opacity: 0.75 }}>· claimed</span>}
