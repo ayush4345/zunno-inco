@@ -44,16 +44,34 @@ skip-when-unfunded, buy with referral split summing to `1e18`, idempotent entry,
 equal + odd-remainder win split, losing-claim revert stays retryable, double-claim
 blocked, admin-only config.
 
+`contracts/test/MegapotFork.t.sol` forks Base Sepolia (needs `BASE_SEPOLIA_RPC` in
+`.env`; no-ops if unset) and checks the hardcoded default addresses are live
+contracts and `ticketPrice()`/`decimals()` respond sanely — catches a stale/wrong
+default before it silently no-ops `enterJackpot` on a real deploy.
+
 ```bash
-cd contracts && forge test --match-path test/MegapotJackpot.t.sol -vv
+cd contracts && forge test
 ```
 
-## Frontend (remaining)
-- **Jackpot banner**: current pot + countdown via the Megapot Data API
-  (`https://api.megapot.io` — active round). Copy: "Every hand enters today's Megapot jackpot."
-- **This table's ticket**: read `getGameJackpot(gameId)` → show ticket id(s) / "entered".
-- **Claim**: after the draw settles and the ticket won (check tier off-chain first),
-  call `claimGameJackpot(gameId)`.
+## Frontend
+Done — `ConfidentialGame.tsx`'s `JackpotBanner` shows the live pot from the Megapot
+Data API (`https://api.megapot.io/v1/rounds/active`), this table's ticket via
+`getGameJackpot(gameId)`, and a claim button wired to `claimGameJackpot(gameId)`.
+
+## Remaining work
+- **Mainnet addresses**: only Base Sepolia (84532) defaults are baked into
+  `MegapotJackpot`. Before a mainnet deploy, get the official Base (8453) USDC /
+  Jackpot / JackpotRandomTicketBuyer addresses from Megapot directly (don't trust
+  a guess) and have `megapotAdmin` call `setMegapotConfig(usdc, jackpot, buyer)`.
+- **Funding**: the contract needs real USDC to buy tickets — `approve` the
+  contract then call `fundJackpot(amount)` from a funded wallet. This is a real
+  on-chain transaction and has to be done by whoever holds the operator key; it
+  isn't part of `Deploy.s.sol`. Until it's funded, entries no-op silently
+  (`JackpotSkipped`).
+- **Live draw**: nothing exercises an actual settled/winning draw end-to-end —
+  that only happens by entering a real round and waiting for Megapot's daily
+  drawing. `MegapotFork.t.sol` verifies the integration points are live and
+  correct, which is as far as this can be checked ahead of time.
 
 ## Notes / risks
 - **Async draw**: the winner is known at the next daily drawing, not instantly — the
