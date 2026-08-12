@@ -37,21 +37,27 @@ verified on-chain anyway in case that changes later: USDC
 `0xb9560b43b91dE2c1DaF5dfbb76b2CFcDaFc13aBd` — source: `https://llms.megapot.io/`.)
 
 ## Deployment & funding status (Base Sepolia)
-Live contract: `0x8Be448437C4f1789230d01f75C64A8B9b980081E` (matches
-`client/.env` / `docs/INCO_INTEGRATION.md`). Confirmed on-chain 2026-08-12:
-- Has the Megapot code (`jackpot()`/`usdc()`/`megapotAdmin()` all resolve).
-- **Already funded**: holds `1_980_000` USDC (6 decimals ≈ 1.98 USDC, ≈ 1–2
-  ticket buys at `ticketPrice()` = 1 USDC). `megapotAdmin` is
+Live contract: `0x1138A6984cCBAa8b09a10fd24753c0897F65fB70` (matches
+`client/.env` / `docs/INCO_INTEGRATION.md`). Deployed 2026-08-12 to pick up
+`MAX_DEAL_BATCH = 8` (see `dealCards` — full 2-player deal in one tx instead
+of two). Confirmed on-chain:
+- Has the Megapot code (`jackpot()`/`usdc()`/`megapotAdmin()` all resolve),
+  `MAX_DEAL_BATCH()` reads `8`.
+- **Funded**: holds `18_000_000` USDC (6 decimals = 18 USDC, ~18 ticket buys
+  at `ticketPrice()` = 1 USDC). `megapotAdmin` is
   `0x030e255635dfE3eB318943B726870535BFe6B9FB`.
 - Entries beyond that will need topping up: `approve` USDC to the contract,
   then `fundJackpot(amount)`, from whoever holds the `megapotAdmin` key.
 
-A second `ZunnoInco` was deployed to `0xCe647b1EAc4866470b43124B988bEac3EF0562Ef`
-while chasing what turned out to be a false alarm (an *older* address cited in
-stale docs/`.env.example` predated Megapot and made `jackpot()` revert — the
-real `.env` was already on the funded, Megapot-enabled deployment above). This
-second contract is redundant: it has the Megapot code but 0 USDC. Not wired
-into anything; safe to ignore or reuse later.
+Two earlier deployments are now stale/abandoned — **do not fund or reference
+them**:
+- `0x8Be448437C4f1789230d01f75C64A8B9b980081E` — the previous live contract.
+  Still holds **21.98 USDC that cannot be recovered**: `MegapotJackpot` has no
+  withdraw/rescue function, only `fundJackpot` (one-way in). Stranded testnet
+  funds, not a live/mainnet loss.
+- `0xCe647b1EAc4866470b43124B988bEac3EF0562Ef` — redundant deploy from an
+  earlier false alarm (chasing a stale-docs address that turned out fine).
+  Has the Megapot code but 0 USDC, never wired into anything.
 
 ## Tests
 `contracts/test/MegapotJackpot.t.sol` (+ `test/mocks/MegapotMocks.sol`) runs without
