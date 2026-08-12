@@ -28,29 +28,30 @@ game pot are independent.
 | Ticket price | `ticketPrice()` (~`1_000_000` = 1 USDC) |
 | Source tag | `keccak256("zunno-inco")` |
 
-`setMegapotConfig(usdc, jackpot, buyer)` repoints to mainnet (8453) or new deployments.
+`setMegapotConfig(usdc, jackpot, buyer)` repoints to a different deployment if
+ever needed — everything for this project stays on Base Sepolia by design, no
+mainnet deploy planned. (Base mainnet, chain 8453, addresses were looked up and
+verified on-chain anyway in case that changes later: USDC
+`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`, Jackpot
+`0x3bAe643002069dBCbcd62B1A4eb4C4A397d042a2`, JackpotRandomTicketBuyer
+`0xb9560b43b91dE2c1DaF5dfbb76b2CFcDaFc13aBd` — source: `https://llms.megapot.io/`.)
 
-## Base Mainnet (chain 8453) addresses — verified, not yet wired
-Sourced from `https://llms.megapot.io/` and independently confirmed on-chain
-(2026-08-12: `eth_getCode` shows deployed bytecode at all three via
-`https://mainnet.base.org`; `USDC.decimals()==6`/`symbol()=="USDC"`,
-`Jackpot.ticketPrice()==1_000_000`, matching the testnet price). `ZunnoInco`
-itself has **not** been deployed to mainnet yet (only Base Sepolia — see
-`client/.env.example`), so nothing needs wiring until that happens; once it is,
-call `setMegapotConfig` with these:
+## Deployment & funding status (Base Sepolia)
+Live contract: `0x8Be448437C4f1789230d01f75C64A8B9b980081E` (matches
+`client/.env` / `docs/INCO_INTEGRATION.md`). Confirmed on-chain 2026-08-12:
+- Has the Megapot code (`jackpot()`/`usdc()`/`megapotAdmin()` all resolve).
+- **Already funded**: holds `1_980_000` USDC (6 decimals ≈ 1.98 USDC, ≈ 1–2
+  ticket buys at `ticketPrice()` = 1 USDC). `megapotAdmin` is
+  `0x030e255635dfE3eB318943B726870535BFe6B9FB`.
+- Entries beyond that will need topping up: `approve` USDC to the contract,
+  then `fundJackpot(amount)`, from whoever holds the `megapotAdmin` key.
 
-| Contract | Address |
-|---|---|
-| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
-| Jackpot | `0x3bAe643002069dBCbcd62B1A4eb4C4A397d042a2` |
-| JackpotRandomTicketBuyer | `0xb9560b43b91dE2c1DaF5dfbb76b2CFcDaFc13aBd` |
-
-## Funding & operating
-- The contract must hold **USDC** to buy tickets. Fund via `fundJackpot(amount)`
-  (needs a prior USDC `approve` to the ZunnoInco contract). If unfunded, entry is
-  skipped silently (emits `JackpotSkipped`) and the game proceeds normally.
-- Get Base Sepolia testnet USDC from a faucet, send some to the deployer, then
-  `approve` + `fundJackpot`.
+A second `ZunnoInco` was deployed to `0xCe647b1EAc4866470b43124B988bEac3EF0562Ef`
+while chasing what turned out to be a false alarm (an *older* address cited in
+stale docs/`.env.example` predated Megapot and made `jackpot()` revert — the
+real `.env` was already on the funded, Megapot-enabled deployment above). This
+second contract is redundant: it has the Megapot code but 0 USDC. Not wired
+into anything; safe to ignore or reuse later.
 
 ## Tests
 `contracts/test/MegapotJackpot.t.sol` (+ `test/mocks/MegapotMocks.sol`) runs without
@@ -74,14 +75,10 @@ Data API (`https://api.megapot.io/v1/rounds/active`), this table's ticket via
 `getGameJackpot(gameId)`, and a claim button wired to `claimGameJackpot(gameId)`.
 
 ## Remaining work
-- **Mainnet deploy**: `ZunnoInco` only exists on Base Sepolia today. Deploying
-  to Base mainnet is a real transaction from a funded wallet — the verified
-  addresses above are ready for `setMegapotConfig` once that happens.
-- **Funding**: the contract needs real USDC to buy tickets — `approve` the
-  contract then call `fundJackpot(amount)` from a funded wallet. This is a real
-  on-chain transaction and has to be done by whoever holds the operator key; it
-  isn't part of `Deploy.s.sol`. Until it's funded, entries no-op silently
-  (`JackpotSkipped`).
+- **Top up funding eventually**: the live contract holds ~1.98 USDC (good for
+  ~1–2 more ticket buys). Keep an eye on the balance and `approve` +
+  `fundJackpot(amount)` again from the `megapotAdmin` key before it runs dry —
+  until then entries no-op silently (`JackpotSkipped`), never blocking the game.
 - **Live draw**: nothing exercises an actual settled/winning draw end-to-end —
   that only happens by entering a real round and waiting for Megapot's daily
   drawing. `MegapotFork.t.sol` verifies the integration points are live and
