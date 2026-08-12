@@ -1,0 +1,30 @@
+{
+  "name": "zunno-backend",
+  "version": "1.0.0",
+  "description": "Real-time multiplayer UNO backend for Zunno",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "NODE_ENV=development nodemon index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "tracking:seed:circuits": "node tracking/seedCircuitSetup.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.2",
+    "@socket.io/redis-adapter": "8.3.0",
+    "cors": "2.8.5",
+    "dotenv": "16.4.7",
+    "engine.io": "6.6.0",
+    "express": "4.17.1",
+    "ioredis": "5.8.2",
+    "poseidon-lite": "^0.3.0",
+    "socket.io": "4.1.3",
+    "winston": "3.17.0",
+    "ws": "8.18.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "prisma": "^6.16.2"
+  }
+}
