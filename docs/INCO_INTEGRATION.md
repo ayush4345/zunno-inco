@@ -4,7 +4,16 @@ Zunno uses **Inco Lightning 1.0.2** on Base Sepolia to keep the shuffled deck an
 
 Inco Lightning is **TEE-based confidential computing**, not FHE and not a zero-knowledge proof system. Solidity stores opaque `bytes32` handles (`euint256` and `elist`); Inco covalidators process their confidential values and sign decryptions that the contract can verify.
 
-Deployed contract: [`0x1138A6984cCBAa8b09a10fd24753c0897F65fB70`](https://sepolia.basescan.org/address/0x1138A6984cCBAa8b09a10fd24753c0897F65fB70)
+Deployed contract: [`0x1174a52267ae81cF0A5b565F272a98F2aB972164`](https://sepolia.basescan.org/address/0x1174a52267ae81cF0A5b565F272a98F2aB972164)
+
+`drawCard`/`playCard` — the only two functions gated by player identity
+(turn check + hand ownership) — are relayable through an
+[`ERC2771Forwarder`](https://sepolia.basescan.org/address/0x9534B95CF466ce81cf5C6E256b4554F48A7e1E1d)
+so a player signs an off-chain EIP-712 request instead of a wallet tx per
+move; the backend (`server/services/relayer.js`) submits it and pays gas.
+`_msgSender()` still resolves to the real player, so hand storage keys and
+Inco's `e.allow` decrypt permission — both keyed by the caller's address —
+stay correctly scoped to them, not the relayer.
 
 ## What is private?
 
