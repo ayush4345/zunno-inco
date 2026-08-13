@@ -20,6 +20,7 @@ export interface NetworkConfig {
   icon: string;
   chain: Chain;
   contractAddress?: string;
+  forwarderAddress?: string;
 }
 
 export const SUPPORTED_NETWORKS: NetworkConfig[] = [
@@ -30,6 +31,9 @@ export const SUPPORTED_NETWORKS: NetworkConfig[] = [
     icon: "/base-logo.svg",
     chain: baseSepolia,
     contractAddress: process.env.NEXT_PUBLIC_BASE_SEPOLIA_CONTRACT_ADDRESS,
+    // ERC2771Forwarder relayed for drawCard/playCard — unset disables meta-tx,
+    // falling back to direct wallet-signed txs. See contracts/src/ZunnoInco.sol.
+    forwarderAddress: process.env.NEXT_PUBLIC_BASE_SEPOLIA_FORWARDER_ADDRESS,
   },
 ];
 
@@ -51,6 +55,17 @@ export const getNetworkByName = (name: string): NetworkConfig | undefined => {
 export const getContractAddress = (chainId: number): string => {
   const network = getNetworkById(chainId);
   return network?.contractAddress || "";
+};
+
+/**
+ * Get the ERC2771Forwarder address for a specific network, if meta-tx relaying
+ * is configured for it.
+ * @param chainId - The chain ID of the network
+ * @returns The forwarder address for the network, or empty string if unset
+ */
+export const getForwarderAddress = (chainId: number): string => {
+  const network = getNetworkById(chainId);
+  return network?.forwarderAddress || "";
 };
 /**
  * Check if a chain ID is supported

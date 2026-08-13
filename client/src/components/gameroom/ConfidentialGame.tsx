@@ -21,7 +21,7 @@ import {
   type UnoCard,
 } from "../../../incoDeckClient";
 import { unoGameABI } from "@/constants/unogameabi";
-import { getContractAddress } from "@/config/networks";
+import { getContractAddress, getForwarderAddress } from "@/config/networks";
 import { useToast } from "@/components/ui/use-toast";
 import { Toaster } from "@/components/ui/toaster";
 import { useSoundProvider } from "@/context/SoundProvider";
@@ -33,6 +33,31 @@ const CHAIN_ID = 84532;
 const PHASE = { waiting: 0, opening: 1, active: 2, finished: 3 } as const;
 const COLOR_INDEX: Record<string, number> = { R: 0, Y: 1, G: 2, B: 3 };
 const COLOR_CODE = ["R", "Y", "G", "B"] as const;
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
+
+// Minimal ERC2771Forwarder ABI slice — only what the client needs to sign a
+// meta-tx request (nonce read). Submission goes through the backend relayer.
+const FORWARDER_ABI = [
+  {
+    type: "function",
+    name: "nonces",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+] as const;
+
+const FORWARD_REQUEST_TYPES = {
+  ForwardRequest: [
+    { name: "from", type: "address" },
+    { name: "to", type: "address" },
+    { name: "value", type: "uint256" },
+    { name: "gas", type: "uint256" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint48" },
+    { name: "data", type: "bytes" },
+  ],
+} as const;
 
 type PeekedCard = Awaited<ReturnType<typeof peekMyHand>>[number] & {
   asset: string;
@@ -96,6 +121,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
     playWildCardSound,
   } = useSoundProvider();
   const contractAddress = getContractAddress(CHAIN_ID) as Address;
+  const forwarderAddress = getForwarderAddress(CHAIN_ID) as Address | "";
 
   const [game, setGame] = useState<ChainGame | null>(null);
   const [handles, setHandles] = useState<Hex[]>([]);
@@ -284,6 +310,83 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
     [address, chain?.id, contractAddress, decryptHandles, publicClient, refresh, sendTransactionAsync, toast, walletClient],
   );
 
+  /** Same as `transact`, but for drawCard/playCard: the player signs an
+   *  off-chain EIP-712 request instead of a transaction, and the backend
+   *  relayer submits + pays gas. Falls back to `transact` when no forwarder
+   *  is configured for this network. */
+  const relayTransact = useCallback(
+    async (label: string, data: Hex, decryptAfter = false) => {
+      if (!forwarderAddress) return transact(label, data, decryptAfter);
+      if (!address || !publicClient || !walletClient?.account) {
+        throw new Error("Connect your browser wallet first");
+      }
+      if (chain?.id !== CHAIN_ID) throw new Error("Switch your wallet to Base Sepolia");
+
+      setBusy(`${label}: sign…`);
+      setError(null);
+      try {
+        const nonce = await publicClient.readContract({
+          address: forwarderAddress,
+          abi: FORWARDER_ABI,
+          functionName: "nonces",
+          args: [address],
+        });
+        const deadline = Math.floor(Date.now() / 1000) + 3600;
+        const message = {
+          from: address,
+          to: contractAddress,
+          value: 0n,
+          gas: 300_000n,
+          nonce,
+          deadline,
+          data,
+        };
+        const signature = await walletClient.signTypedData({
+          account: address,
+          domain: { name: "ZunnoInco", version: "1", chainId: CHAIN_ID, verifyingContract: forwarderAddress },
+          types: FORWARD_REQUEST_TYPES,
+          primaryType: "ForwardRequest",
+          message,
+        });
+
+        setBusy(`${label}: relaying…`);
+        const res = await fetch(`${BACKEND_URL}/api/relay/forward`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: message.from,
+            to: message.to,
+            value: message.value.toString(),
+            gas: message.gas.toString(),
+            deadline: message.deadline.toString(),
+            data: message.data,
+            signature,
+          }),
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.error || "Relay failed");
+
+        setBusy(`${label}: confirming on Base Sepolia…`);
+        const receipt = await publicClient.waitForTransactionReceipt({ hash: body.txHash as Hex });
+        if (receipt.status !== "success") throw new Error("Transaction reverted");
+        const nextHandles = await refresh();
+        if (decryptAfter && nextHandles) {
+          setBusy("Decrypting your new card…");
+          await decryptHandles(nextHandles);
+        }
+        return receipt;
+      } catch (cause) {
+        const message = errorMessage(cause);
+        setError(message);
+        toast({ title: `${label} failed`, description: message, variant: "destructive" });
+        return null;
+      } finally {
+        setBusy(null);
+      }
+    },
+    [address, chain?.id, contractAddress, decryptHandles, forwarderAddress, publicClient, refresh, toast, transact, walletClient],
+  );
+
   useEffect(() => {
     cardCache.current.clear();
     handSession.current = null;
@@ -428,7 +531,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
       functionName: "playCard",
       args: [gameId, BigInt(handIndex), selected.attested.value, selected.attested.signatures, chosenColor],
     });
-    await transact("Play card", data);
+    await relayTransact("Play card", data);
   };
 
   const playCard = async (asset: string) => {
@@ -451,7 +554,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
       functionName: "drawCard",
       args: [gameId],
     });
-    await transact("Draw card", data, true);
+    await relayTransact("Draw card", data, true);
   };
 
   const claimJackpot = async () => {
