@@ -2,13 +2,7 @@
 
 import Hero from "@/components/homepage/Hero"
 import Navbar from "@/components/homepage/Navbar"
-import About from "@/components/homepage/About"
 import Footer from "@/components/homepage/Footer"
-import Feature from "@/components/homepage/Feature"
-import Partner from "@/components/homepage/Partner"
-import Procedure from "@/components/homepage/Procedure"
-import BottomNavigation from "@/components/BottomNavigation";
-
 
 export default function Home() {
   return (
@@ -17,16 +11,9 @@ export default function Home() {
         <Navbar />
         <Hero />
         <div className="relative">
-          <About />
-          <Feature />
-          {/* <Partner /> */}
-          <Procedure />
-        </div>
-        <div className="relative">
           <Footer />
         </div>
       </div>
-      {/* <BottomNavigation /> */}
     </main>
   )
 }

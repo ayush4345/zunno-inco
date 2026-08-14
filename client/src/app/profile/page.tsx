@@ -4,7 +4,6 @@ import ProfilePage from '@/components/profile/ProfilePage';
 import { useEffect, useState } from 'react';
 import { useRecoilState } from 'recoil';
 import { userAccountState } from '@/userstate/userState';
-import BottomNavigation from '@/components/BottomNavigation';
 
 export default function Profile() {
   const [userAccount, setUserAccount] = useRecoilState(userAccountState);
@@ -37,7 +36,6 @@ export default function Profile() {
       <div className="container mx-auto py-6 px-4 pb-24">
         <ProfilePage userAccount={userAccount} connectWallet={connectWallet} isLoading={isLoading} />
       </div>
-      {/* <BottomNavigation /> */}
     </main>
   );
 }
