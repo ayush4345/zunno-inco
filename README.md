@@ -1,11 +1,11 @@
 # Zunno × Inco — Confidential UNO on Inco
 
-**Zunno**, rebuilt so your **hand is encrypted on-chain**. Cards are dealt as encrypted state via [Inco Lightning](https://docs.inco.org), Inco's TEE-based confidential compute layer on **Base** — no server holds your cards, and only the cards you *play* become public. Built for the **Inco × Megapot Summer Game Jam 2026**.
+**Zunno** is UNO built so your **hand is encrypted on-chain**. Cards are dealt as encrypted state via [Inco Lightning](https://docs.inco.org), Inco's TEE-based confidential compute layer on **Base** — no server holds your cards, and only the cards you *play* become public. Built for the **Inco × Megapot Summer Game Jam 2026**.
 
 > Status: 🚧 The contract prototype builds and tests, but is not audited. The client/server integration is still WIP.
 
 ## Why this matters
-The original [Zunno](https://zunno.xyz) proves the **shuffle** is fair (Chainlink VRF + SP1 + ZKVerify) but still relies on the **server to distribute cards**. Inco closes that gap: **hands live as encrypted values on-chain**, so nobody — not even us — can see your cards until you play them.
+Card games need a fair shuffle and a way to keep each player's hand private — normally that means trusting a server to hold and distribute the cards. Inco removes that trust requirement: **hands live as encrypted values on-chain**, so nobody — not even us — can see your cards until you play them.
 
 - **Confidential hands** — each player's cards are `euint` handles, readable only by their owner (`e.allow`).
 - **Verifiably fair deal** — encrypted randomness via `e.randEuint8()` (no trusted dealer).
@@ -72,9 +72,9 @@ ZunnoInco.sol (Base) ──► Inco TEE executor + covalidator attestations
 
 ## Monorepo
 ```
-/contracts   → Foundry + Inco Lightning confidential UNO contract (NEW)
-/client      → React frontend (reuse from Khel-fun/ZunnoGame @ main-v-02) + @inco/lightning-js
-/server      → Rust backend (reuse from ZunnoGame) — role reduced to matchmaking/turns
+/contracts   → Foundry + Inco Lightning confidential UNO contract
+/client      → Next.js/React frontend + @inco/lightning-js
+/server      → Node.js backend — matchmaking/turns orchestration, no card custody
 /docs        → INCO_INTEGRATION.md, MEGAPOT_INTEGRATION.md
 ```
 
@@ -91,4 +91,3 @@ forge script script/Deploy.s.sol:Deploy --rpc-url base_sepolia --broadcast
 ## Links
 - Jam: register https://taglg1ysk8z.typeform.com/to/q2REER5u · workshops https://luma.com/1e0zdrwi · TG https://t.me/summergamejam
 - Inco docs: https://docs.inco.org/games/overview · Megapot: https://docs.megapot.io/
-- Base reference (original): https://github.com/Khel-fun/ZunnoGame (branch `main-v-02`)
