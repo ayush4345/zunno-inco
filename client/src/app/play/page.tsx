@@ -20,9 +20,10 @@ import {
   isSupportedChain,
   getSupportedChainIds,
 } from "@/config/networks";
-import { getLocalComputerGameId } from "@/lib/localGame.mjs";
 import { getBufferedGasLimit } from "@/lib/transactionGas.mjs";
 import { encodeFunctionData, keccak256, toBytes } from "viem";
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:4000";
 
 // GameCreated event signature - now includes isPrivate param
 const GAME_CREATED_EVENT_SIGNATURE = keccak256(
@@ -301,9 +302,65 @@ export default function PlayGame() {
   };
 
   const startComputerGame = async () => {
+    if (!address) {
+      toast({
+        title: "Wallet Not Connected",
+        description: "Please connect your wallet to play.",
+        variant: "destructive",
+        duration: 5000,
+      });
+      return;
+    }
+
     setComputerCreateLoading(true);
-    const localGameId = getLocalComputerGameId();
-    router.push(`/game/${localGameId}?mode=computer`);
+    try {
+      if (!isSupportedChain(chainId)) {
+        throw new Error(
+          `Unsupported network. Supported: ${getSupportedChainIds().join(", ")}`
+        );
+      }
+
+      const data = encodeFunctionData({
+        abi: unoGameABI,
+        functionName: "createGame",
+        args: [address as `0x${string}`, true],
+      });
+
+      setTransactionStatus("Creating table...");
+      const hash = await sendTransaction(data, true);
+      const receipt = await waitForReceipt(hash);
+      if (!receipt || receipt.status === "reverted") {
+        throw new Error("Transaction reverted on-chain. Table was not created.");
+      }
+      const newGameId = extractGameIdFromLogs(receipt.logs, contractAddress);
+      if (!newGameId) {
+        throw new Error("Could not read the new game ID from the transaction.");
+      }
+
+      setTransactionStatus("Seating the bot...");
+      const res = await fetch(`${BACKEND_URL}/api/bot/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+        body: JSON.stringify({ gameId: newGameId.toString() }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Bot could not join the table");
+      }
+
+      router.push(`/game/${newGameId.toString()}`);
+    } catch (error: any) {
+      console.error("Failed to start computer game:", error);
+      toast({
+        title: "Failed to Start Game",
+        description: error?.message || "Please try again",
+        variant: "destructive",
+        duration: 5000,
+      });
+    } finally {
+      setComputerCreateLoading(false);
+      setTransactionStatus("");
+    }
   };
 
   /**

@@ -16,7 +16,9 @@ export default function Room() {
     return <CenterInfo msg="Invalid game ID" />;
   }
 
-  // ponytail: computer mode stays local until an on-chain bot wallet exists.
+  // "Play with Computer" now creates a real on-chain bot table (see
+  // play/page.tsx's startComputerGame + server/bot/) and never sets this
+  // query param. Kept as a manual/debug fallback to the local-only engine.
   if (searchParams.get("mode") === "computer") {
     return <Game room={id} currentUser="Player 1" isComputerMode playerCount={2} onZKStateChange={undefined} />;
   }
