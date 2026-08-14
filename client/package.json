@@ -1,5 +1,5 @@
 {
-  "name": "unogameui",
+  "name": "zunno-inco-client",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -9,7 +9,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "node --test src/lib/*.test.mjs"
   },
   "dependencies": {
     "@aztec/bb.js": "3.0.0-nightly.20260102",

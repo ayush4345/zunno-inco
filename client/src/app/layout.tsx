@@ -4,7 +4,6 @@ import { Providers } from './provider'
 import { Analytics } from "@vercel/analytics/react"
 import type React from "react"
 import '@coinbase/onchainkit/styles.css';
-import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] })
 

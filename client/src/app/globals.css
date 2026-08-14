@@ -699,3 +699,154 @@
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
+
+/* Confidential-table audio controls and dealing state */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sound-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  padding: 0.3rem;
+  border: 1px solid rgba(180, 210, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(8, 18, 51, 0.72);
+  backdrop-filter: blur(12px);
+}
+
+.audio-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  min-height: 2rem;
+  padding: 0 0.58rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: rgba(231, 241, 255, 0.68);
+  background: transparent;
+  font: 700 0.7rem/1 Manrope, sans-serif;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.audio-toggle:hover,
+.audio-toggle.is-on {
+  color: #fff;
+  border-color: rgba(116, 177, 255, 0.56);
+  background: linear-gradient(135deg, rgba(75, 141, 255, 0.42), rgba(47, 86, 220, 0.25));
+}
+
+.audio-icon {
+  width: 1rem;
+  color: #9fc7ff;
+  text-align: center;
+  font-size: 0.95rem;
+}
+
+.audio-toggle:focus-visible,
+.audio-volume input:focus-visible {
+  outline: 2px solid #d2e2ff;
+  outline-offset: 2px;
+}
+
+.audio-volume {
+  display: flex;
+  align-items: center;
+  width: 4.6rem;
+  padding: 0 0.25rem;
+}
+
+.audio-volume input {
+  width: 100%;
+  accent-color: #86b6ff;
+  cursor: pointer;
+}
+
+.dealing-loader {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: min(100%, 18rem);
+  padding: 0.65rem 0.95rem;
+  border: 1px solid rgba(132, 181, 255, 0.35);
+  border-radius: 0.9rem;
+  background: linear-gradient(135deg, rgba(17, 36, 88, 0.9), rgba(10, 18, 55, 0.9));
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+}
+
+.dealing-loader strong,
+.dealing-loader small {
+  display: block;
+}
+
+.dealing-loader strong {
+  margin: 0.1rem 0 0.2rem;
+  color: #f6f9ff;
+  font: 700 0.88rem/1.2 Manrope, sans-serif;
+}
+
+.dealing-loader small {
+  color: #a7c8ff;
+  font: 600 0.68rem/1.2 "DM Mono", monospace;
+}
+
+.dealing-animation {
+  position: relative;
+  flex: 0 0 3.2rem;
+  height: 2.65rem;
+  overflow: hidden;
+}
+
+.dealing-deck,
+.dealing-card {
+  position: absolute;
+  width: 1.2rem;
+  height: 1.7rem;
+  border: 1px solid rgba(221, 236, 255, 0.7);
+  border-radius: 0.22rem;
+  background: linear-gradient(145deg, #77adff, #314fc4);
+  box-shadow: 0.2rem 0.2rem 0 rgba(28, 58, 153, 0.45);
+}
+
+.dealing-deck {
+  left: 0.8rem;
+  top: 0.5rem;
+  transform: rotate(-8deg);
+}
+
+.dealing-card {
+  left: 1rem;
+  top: 0.48rem;
+  animation: deal-card 1.25s cubic-bezier(.2, .7, .2, 1) infinite;
+}
+
+.dealing-card-two { animation-delay: 0.28s; }
+.dealing-card-three { animation-delay: 0.56s; }
+
+@keyframes deal-card {
+  0% { opacity: 0; transform: translate(0, 0) rotate(-8deg) scale(0.72); }
+  18% { opacity: 1; }
+  78% { opacity: 1; transform: translate(2rem, -0.3rem) rotate(15deg) scale(0.92); }
+  100% { opacity: 0; transform: translate(2.4rem, -0.45rem) rotate(18deg) scale(0.75); }
+}
+
+@media (max-width: 560px) {
+  .audio-volume { display: none; }
+  .audio-toggle { padding: 0 0.45rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dealing-card { animation: none; opacity: 0; }
+  .dealing-card-one { opacity: 1; transform: translate(1.55rem, -0.22rem) rotate(14deg); }
+}

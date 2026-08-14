@@ -21,6 +21,8 @@ import {
   isSupportedChain,
   getSupportedChainIds,
 } from "@/config/networks";
+import { getLocalComputerGameId } from "@/lib/localGame.mjs";
+import { getBufferedGasLimit } from "@/lib/transactionGas.mjs";
 import { encodeFunctionData, keccak256, toBytes } from "viem";
 
 // GameCreated event signature - now includes isPrivate param
@@ -174,15 +176,23 @@ export default function PlayGame() {
    * Send a transaction via browser wallet
    */
   const sendTransaction = useCallback(
-    async (data: `0x${string}`): Promise<`0x${string}`> => {
+    async (data: `0x${string}`, estimateGas = false): Promise<`0x${string}`> => {
       const contractAddr = getContractAddress(chainId) as `0x${string}`;
+      const gas = estimateGas && publicClient && address
+        ? getBufferedGasLimit(await publicClient.estimateGas({
+          account: address,
+          to: contractAddr,
+          data,
+        }))
+        : undefined;
       const hash = await sendWagmiTransaction({
         to: contractAddr,
         data,
+        ...(gas ? { gas } : {}),
       });
       return hash;
     },
-    [chainId, isWalletReady, sendWagmiTransaction]
+    [address, chainId, isWalletReady, publicClient, sendWagmiTransaction]
   );
 
   /**
@@ -235,7 +245,7 @@ export default function PlayGame() {
       });
 
       setTransactionStatus("Sending transaction...");
-      const hash = await sendTransaction(data);
+      const hash = await sendTransaction(data, true);
 
       toast({
         title: "Transaction Sent!",
@@ -292,62 +302,9 @@ export default function PlayGame() {
   };
 
   const startComputerGame = async () => {
-    if (!address) {
-      toast({
-        title: "Wallet Not Connected",
-        description: "Please connect your wallet to play against computer.",
-        variant: "destructive",
-        duration: 5000,
-      });
-      return;
-    }
-
-    try {
-      setComputerCreateLoading(true);
-      const data = encodeFunctionData({
-        abi: unoGameABI,
-        functionName: "createGame",
-        args: [address as `0x${string}`, true],
-      });
-
-      const hash = await sendTransaction(data);
-      toast({
-        title: "Transaction Sent!",
-        description: "Waiting for confirmation...",
-        duration: 5000,
-      });
-
-      const receipt = await waitForReceipt(hash);
-      if (receipt) {
-        if (receipt.status === "reverted") {
-          throw new Error("Transaction reverted on-chain. Game was not created.");
-        }
-        const newGameId = extractGameIdFromLogs(
-          receipt.logs,
-          contractAddress
-        );
-        if (newGameId) {
-          const gameIdStr = newGameId.toString();
-          setGameId(newGameId);
-          socketManager.emit("createComputerGame", {
-            gameId: gameIdStr,
-            playerAddress: address,
-          });
-          router.push(`/game/${gameIdStr}?mode=computer`);
-        }
-        refetchGames();
-      }
-    } catch (error: any) {
-      console.error("Failed to create computer game:", error);
-      toast({
-        title: "Failed to Start Computer Game",
-        description: error?.message || "Please try again",
-        variant: "destructive",
-        duration: 5000,
-      });
-    } finally {
-      setComputerCreateLoading(false);
-    }
+    setComputerCreateLoading(true);
+    const localGameId = getLocalComputerGameId();
+    router.push(`/game/${localGameId}?mode=computer`);
   };
 
   /**
