@@ -315,7 +315,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
    *  relayer submits + pays gas. Falls back to `transact` when no forwarder
    *  is configured for this network. */
   const relayTransact = useCallback(
-    async (label: string, data: Hex, decryptAfter = false) => {
+    async (label: string, data: Hex, decryptAfter = false, gas: bigint = 300_000n) => {
       if (!forwarderAddress) return transact(label, data, decryptAfter);
       if (!address || !publicClient || !walletClient?.account) {
         throw new Error("Connect your browser wallet first");
@@ -336,7 +336,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
           from: address,
           to: contractAddress,
           value: 0n,
-          gas: 300_000n,
+          gas,
           nonce,
           deadline,
           data,
@@ -563,7 +563,13 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
       functionName: "playCard",
       args: [gameId, BigInt(handIndex), selected.attested.value, selected.attested.signatures, chosenColor],
     });
-    await relayTransact("Play card", data);
+    // Draw Two / Wild Draw Four deal 2/4 extra confidential cards inside the
+    // same call (~120k gas each on Base Sepolia) on top of the base playCard
+    // cost — the default 300k relay gas limit isn't enough and the meta-tx
+    // reverts with FailedCall() (out of gas, swallowed by the forwarder).
+    const gas =
+      selected.card.kind === "wildDraw4" ? 1_000_000n : selected.card.kind === "drawTwo" ? 700_000n : 300_000n;
+    await relayTransact("Play card", data, false, gas);
   };
 
   const playCard = async (asset: string) => {
