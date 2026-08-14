@@ -165,9 +165,6 @@ importers:
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.20(postcss@8.4.47)
-      ignore-loader:
-        specifier: ^0.1.2
-        version: 0.1.2
       postcss:
         specifier: ^8.4.44
         version: 8.4.47
@@ -2971,9 +2968,6 @@ packages:
 
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
-
-  ignore-loader@0.1.2:
-    resolution: {integrity: sha512-yOJQEKrNwoYqrWLS4DcnzM7SEQhRKis5mB+LdKKh4cPmGYlLPR0ozRzHV5jmEk2IxptqJNQA5Cc0gw8Fj12bXA==}
 
   inflight@1.0.6:
     resolution: {integrity: sha512-k92I/b08q4wvFscXCLvqfsHCrjrF7yiXsQuIVvVE7N82W3+aqpzuUdBbfhWcy/FZR3/4IgflMgKLOsvPDrGCJA==}
@@ -8172,8 +8166,6 @@ snapshots:
   idb-keyval@6.2.1: {}
 
   ieee754@1.2.1: {}
-
-  ignore-loader@0.1.2: {}
 
   inflight@1.0.6:
     dependencies:
