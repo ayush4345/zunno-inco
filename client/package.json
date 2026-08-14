@@ -28,7 +28,6 @@
     "@solana-program/system": "^0.12.0",
     "@solana/kit": "^6.1.0",
     "@splinetool/react-spline": "^4.0.0",
-    "@supabase/supabase-js": "^2.49.4",
     "@tanstack/react-query": "^5.84.1",
     "@telegram-apps/sdk-react": "^2.0.9",
     "@vercel/analytics": "^1.5.0",
