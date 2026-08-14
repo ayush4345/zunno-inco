@@ -444,6 +444,19 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
     return () => window.clearInterval(interval);
   }, [refresh]);
 
+  // Once a hand-decrypt voucher session exists, decrypt newly-dealt cards
+  // silently instead of waiting on a manual click — the voucher already
+  // covers this, no wallet popup needed. First-ever decrypt in a game still
+  // needs the button, since that's what creates the session (a real wallet
+  // signature the user should consciously approve).
+  useEffect(() => {
+    if (!needsDecrypt || busy) return;
+    const session = handSession.current;
+    if (session && session.expiresAt > Date.now()) {
+      void unlockHand();
+    }
+  }, [needsDecrypt, busy, unlockHand]);
+
   useEffect(() => {
     const loadRound = async () => {
       try {
