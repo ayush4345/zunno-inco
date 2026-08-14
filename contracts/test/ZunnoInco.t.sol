@@ -164,4 +164,46 @@ contract ZunnoIncoTest is IncoTest {
         vm.expectRevert("max players");
         game.createGame(alice, false, false, bytes32(0), 5);
     }
+
+    function testJoinAsBotOnlyOperatorOnBotLobbies() public {
+        vm.prank(alice);
+        uint256 botGameId = game.createGame(alice, true);
+
+        // botOperator unset (zero address) — nobody can seat a bot yet.
+        vm.expectRevert("not bot operator");
+        game.joinAsBot(botGameId, carol);
+
+        game.setBotOperator(carol); // test contract deployed `game`, so it's megapotAdmin
+
+        // Only the configured operator may call joinAsBot.
+        vm.prank(bob);
+        vm.expectRevert("not bot operator");
+        game.joinAsBot(botGameId, carol);
+
+        // A human can't join a bot lobby through the normal path.
+        vm.prank(bob);
+        vm.expectRevert("bot game");
+        game.joinGame(botGameId);
+
+        // joinAsBot only works on isBot lobbies.
+        vm.prank(alice);
+        uint256 humanGameId = game.createGame(alice, false);
+        vm.prank(carol);
+        vm.expectRevert("bot game");
+        game.joinAsBot(humanGameId, carol);
+
+        // Operator seats the bot; lobby is now startable at 2 players.
+        vm.prank(carol);
+        game.joinAsBot(botGameId, carol);
+
+        (address[] memory players,,,,,,,,,) = game.getGameState(botGameId);
+        assertEq(players.length, 2);
+        assertEq(players[0], alice);
+        assertEq(players[1], carol);
+
+        uint256 fee = game.deckFee(108);
+        game.fundFees{value: fee}();
+        vm.prank(alice);
+        game.startGame(botGameId);
+    }
 }

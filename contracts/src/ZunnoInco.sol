@@ -70,6 +70,8 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot, ERC2771
 
     uint256 public nextGameId;
     uint256 public feeBalance;
+    /// @notice Only address allowed to seat a bot into an isBot lobby via `joinAsBot`.
+    address public botOperator;
     mapping(uint256 => Game) public games;
     mapping(uint256 => Lobby) public lobbies;
     mapping(address => uint256[]) internal createdGames;
@@ -102,6 +104,11 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot, ERC2771
     /// @notice Pre-fund the contract so it can pay ConfidentialDeck shuffle fees.
     function fundFees() external payable {
         feeBalance += msg.value;
+    }
+
+    /// @notice Set the address allowed to seat bots into isBot lobbies (see `joinAsBot`).
+    function setBotOperator(address operator) external onlyMegapotAdmin {
+        botOperator = operator;
     }
 
     // ── Lobby / escrow ────────────────────────────────────────────────────────
@@ -156,12 +163,12 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot, ERC2771
     }
 
     function joinGame(uint256 gameId) external payable {
-        _joinGame(gameId, msg.sender, msg.value);
+        _joinGame(gameId, msg.sender, msg.value, false);
     }
 
     function joinGame(uint256 gameId, address joinee) external payable {
         require(joinee == msg.sender, "joinee != sender");
-        _joinGame(gameId, joinee, msg.value);
+        _joinGame(gameId, joinee, msg.value, false);
     }
 
     function joinGameWithCode(uint256 gameId, address joinee, string calldata gameCode) external payable {
@@ -169,14 +176,23 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot, ERC2771
         Lobby storage lobby = lobbies[gameId];
         require(lobby.isPrivate, "not private");
         require(keccak256(bytes(gameCode)) == lobby.gameCodeHash, "invalid game code");
-        _joinGame(gameId, joinee, msg.value);
+        _joinGame(gameId, joinee, msg.value, false);
     }
 
-    function _joinGame(uint256 gameId, address player, uint256 paid) internal {
+    /// @notice Seats a bot into an isBot lobby. Only callable by `botOperator` -
+    ///         the normal join entrypoints reject isBot lobbies entirely, since
+    ///         a bot game is meant to be played against a specific operator-run
+    ///         bot identity, not joinable by arbitrary players.
+    function joinAsBot(uint256 gameId, address bot) external {
+        require(msg.sender == botOperator, "not bot operator");
+        _joinGame(gameId, bot, 0, true);
+    }
+
+    function _joinGame(uint256 gameId, address player, uint256 paid, bool isBotJoin) internal {
         Game storage g = games[gameId];
         require(gameId != 0 && gameId <= nextGameId, "invalid game");
         require(g.phase == Phase.Waiting, "not joinable");
-        require(!lobbies[gameId].isBot, "bot game");
+        require(lobbies[gameId].isBot == isBotJoin, "bot game");
         require(!seated[gameId][player], "already joined");
         require(g.players.length < lobbies[gameId].maxPlayers, "table full");
         require(paid >= g.buyIn, "buy-in");
