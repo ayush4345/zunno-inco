@@ -768,6 +768,56 @@ function JackpotBanner({
   const roundEnded = round ? new Date(round.endsAt).getTime() <= Date.now() : false;
   const claimReady = finished && jackpot?.entered && !jackpot.claimed && roundEnded;
 
+  const [expanded, setExpanded] = useState(true);
+  const collapseTimer = useRef<number | null>(null);
+
+  const clearCollapseTimer = () => {
+    if (collapseTimer.current !== null) window.clearTimeout(collapseTimer.current);
+  };
+
+  // Shows the full panel for 15s on first mount, then auto-collapses to just
+  // the pot button so it stops covering the game. Re-opening it (click) only
+  // holds it open for 10s.
+  useEffect(() => {
+    collapseTimer.current = window.setTimeout(() => setExpanded(false), 15000);
+    return clearCollapseTimer;
+  }, []);
+
+  const expand = () => {
+    clearCollapseTimer();
+    setExpanded(true);
+    collapseTimer.current = window.setTimeout(() => setExpanded(false), 10000);
+  };
+
+  const potLabel = round
+    ? `$${round.potUsdc.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+    : "Megapot";
+
+  if (!expanded) {
+    return (
+      <button
+        onClick={expand}
+        style={{
+          position: "fixed",
+          top: 8,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 85,
+          padding: "0.35rem 0.8rem",
+          borderRadius: 999,
+          background: "rgba(0,0,0,.72)",
+          color: "white",
+          fontFamily: "monospace",
+          fontSize: "0.8rem",
+          border: "none",
+          cursor: "pointer",
+        }}
+      >
+        🎰 {potLabel}
+      </button>
+    );
+  }
+
   return (
     <div
       style={{
@@ -793,7 +843,7 @@ function JackpotBanner({
     >
       <span>
         🎰 Megapot{" "}
-        {round ? `$${round.potUsdc.toLocaleString(undefined, { maximumFractionDigits: 0 })} · draws in ${formatCountdown(round.endsAt)}` : "loading…"}
+        {round ? `${potLabel} · draws in ${formatCountdown(round.endsAt)}` : "loading…"}
       </span>
       {jackpot?.entered && (
         <span style={{ opacity: 0.75 }}>· table ticket bought ({jackpot.ticketCount}, sponsored — free for players)</span>
