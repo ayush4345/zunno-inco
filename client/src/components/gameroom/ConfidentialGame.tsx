@@ -638,6 +638,21 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
 
   const { expanded: jackpotExpanded, expand: expandJackpot } = useJackpotCollapse();
 
+  // startGame now auto-triggers dealCards via the relayer, so dealing is
+  // normally hands-off. Only surface the manual "Deal next N cards" button
+  // as a fallback if the deal hasn't progressed in a while (relay down,
+  // etc.) — otherwise just show a "Dealing…" status with nothing to click.
+  const [showManualDeal, setShowManualDeal] = useState(false);
+  useEffect(() => {
+    if (game?.phase !== PHASE.opening || game.openingReady) {
+      setShowManualDeal(false);
+      return;
+    }
+    setShowManualDeal(false);
+    const timer = window.setTimeout(() => setShowManualDeal(true), 8000);
+    return () => window.clearTimeout(timer);
+  }, [game?.phase, game?.dealt, game?.openingReady]);
+
   if (!contractAddress) return shell(<StatusPanel title="Contract not configured" detail="Set NEXT_PUBLIC_BASE_SEPOLIA_CONTRACT_ADDRESS." />);
   if (!address) return shell(<StatusPanel title="Connect your wallet" detail="Use a browser wallet on Base Sepolia." />);
   if (!game) return shell(<StatusPanel title="Loading confidential game…" detail={error || `Game #${gameId}`} />);
@@ -682,13 +697,17 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
             Decrypt my {handles.length}-card hand
           </button>
         )}
-        <button
-          className="glossy-button glossy-button-blue"
-          disabled={!!busy}
-          onClick={() => void (game.openingReady ? revealOpening() : dealCards())}
-        >
-          {busy || (game.openingReady ? "Reveal opening card" : `Deal next ${Math.min(8, remaining)} cards`)}
-        </button>
+        {game.openingReady ? (
+          <button className="glossy-button glossy-button-blue" disabled={!!busy} onClick={() => void revealOpening()}>
+            {busy || "Reveal opening card"}
+          </button>
+        ) : showManualDeal ? (
+          <button className="glossy-button glossy-button-blue" disabled={!!busy} onClick={() => void dealCards()}>
+            {busy || `Deal next ${Math.min(8, remaining)} cards`}
+          </button>
+        ) : (
+          <span style={{ color: "white", opacity: 0.75 }}>{busy || "Dealing…"}</span>
+        )}
         <MegapotInfoBox
           round={megapotRound}
           jackpot={jackpot}
