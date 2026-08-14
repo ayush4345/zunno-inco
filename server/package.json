@@ -11,6 +11,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@inco/lightning-js": "^1.0.2",
     "@prisma/client": "^6.16.2",
     "@socket.io/redis-adapter": "8.3.0",
     "cors": "2.8.5",
