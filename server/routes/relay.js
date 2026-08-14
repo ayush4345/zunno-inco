@@ -1,5 +1,5 @@
 const express = require('express');
-const { relayForwardRequest } = require('../services/relayer');
+const { relayForwardRequest, submitDealCards } = require('../services/relayer');
 const logger = require('../logger');
 
 const router = express.Router();
@@ -16,6 +16,23 @@ router.post('/forward', async (req, res) => {
     res.json({ txHash });
   } catch (err) {
     logger.error('relay forward failed', { error: err.message });
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// Submit dealCards on the caller's behalf right after startGame confirms, so
+// the player only signs once. No player signature needed here at all -
+// dealCards has no msg.sender gate, the relayer just calls it directly.
+router.post('/deal-cards', async (req, res) => {
+  const { gameId, count } = req.body || {};
+  if (gameId === undefined || count === undefined) {
+    return res.status(400).json({ error: 'gameId and count are required' });
+  }
+  try {
+    const txHash = await submitDealCards(gameId, count);
+    res.json({ txHash });
+  } catch (err) {
+    logger.error('relay deal-cards failed', { error: err.message });
     res.status(400).json({ error: err.message });
   }
 });

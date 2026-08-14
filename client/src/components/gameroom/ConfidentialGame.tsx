@@ -486,7 +486,26 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
     // returns the lowest gas that lets the OUTER call succeed — the path where the
     // inner call starves under EIP-150 and silently skips the jackpot. Force a
     // generous limit (measured ~1.5M for shuffle + ticket buy) so it actually enters.
-    await transact("Start game", data, false, 4_000_000n);
+    const receipt = await transact("Start game", data, false, 4_000_000n);
+    if (!receipt) return;
+
+    // dealCards has no msg.sender gate (anyone can advance the deal), so the
+    // relayer submits it directly with its own key — no second wallet popup.
+    // MAX_DEAL_BATCH (8) covers a full 2-player deal in one call. Falls back
+    // to the manual "Deal next 8 cards" button (rendered while !openingReady)
+    // if the relay call fails for any reason.
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/relay/deal-cards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+        body: JSON.stringify({ gameId: gameId.toString(), count: 8 }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+    } catch {
+      // non-fatal — manual deal button covers this
+    } finally {
+      void refresh();
+    }
   };
 
   const dealCards = async () => {
@@ -611,18 +630,13 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
     <div style={{ minHeight: "100svh", position: "relative", overflow: "hidden" }}>
       <GameBackground turn={turn} currentColor="B" currentUser={currentUser} totalPlayers={game?.players.length || 2} />
       <div style={{ position: "relative", zIndex: 20 }}>
-        <JackpotBanner
-          round={megapotRound}
-          jackpot={jackpot}
-          finished={game?.phase === PHASE.finished}
-          busy={!!busy}
-          onClaim={() => void claimJackpot()}
-        />
         {content}
       </div>
       <Toaster />
     </div>
   );
+
+  const { expanded: jackpotExpanded, expand: expandJackpot } = useJackpotCollapse();
 
   if (!contractAddress) return shell(<StatusPanel title="Contract not configured" detail="Set NEXT_PUBLIC_BASE_SEPOLIA_CONTRACT_ADDRESS." />);
   if (!address) return shell(<StatusPanel title="Connect your wallet" detail="Use a browser wallet on Base Sepolia." />);
@@ -642,6 +656,14 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         ) : (
           <span style={{ color: "white" }}>Waiting for the creator to start…</span>
         )}
+        <MegapotInfoBox
+          round={megapotRound}
+          jackpot={jackpot}
+          finished={false}
+          busy={!!busy}
+          onClaim={() => void claimJackpot()}
+          style={{ width: "100%" }}
+        />
       </StatusPanel>,
     );
   }
@@ -667,6 +689,14 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         >
           {busy || (game.openingReady ? "Reveal opening card" : `Deal next ${Math.min(8, remaining)} cards`)}
         </button>
+        <MegapotInfoBox
+          round={megapotRound}
+          jackpot={jackpot}
+          finished={false}
+          busy={!!busy}
+          onClaim={() => void claimJackpot()}
+          style={{ width: "100%" }}
+        />
       </StatusPanel>,
     );
   }
@@ -689,13 +719,16 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         currentUser={currentUser}
         totalPlayers={game.players.length}
       />
-      <JackpotBanner
-        round={megapotRound}
-        jackpot={jackpot}
-        finished={game.phase === PHASE.finished}
-        busy={!!busy}
-        onClaim={() => void claimJackpot()}
-      />
+      {jackpotExpanded && (
+        <MegapotInfoBox
+          round={megapotRound}
+          jackpot={jackpot}
+          finished={game.phase === PHASE.finished}
+          busy={!!busy}
+          onClaim={() => void claimJackpot()}
+          style={{ position: "fixed", top: 52, right: 12, zIndex: 85, maxWidth: "70vw" }}
+        />
+      )}
       <div style={{ position: "relative", zIndex: 10 }}>
         <GameScreen
           currentUser={currentUser}
@@ -715,6 +748,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
           onUnoClicked={playUnoSound}
           turnTimerEnabled={false}
           actionsDisabled={!!busy || needsDecrypt || playerIndex < 0}
+          jackpotButton={<MegapotPotButton round={megapotRound} onClick={expandJackpot} />}
         />
       </div>
 
@@ -749,25 +783,12 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   );
 }
 
-function JackpotBanner({
-  round,
-  jackpot,
-  finished,
-  busy,
-  onClaim,
-}: {
-  round: MegapotRound | null;
-  jackpot: JackpotState | null;
-  finished: boolean;
-  busy: boolean;
-  onClaim: () => void;
-}) {
-  // ponytail: the ticket's own drawing window isn't tracked on-chain by us, so we
-  // approximate "settled" with the currently-active round's end time — accurate
-  // as long as the game finishes inside the same ~30min drawing it entered.
-  const roundEnded = round ? new Date(round.endsAt).getTime() <= Date.now() : false;
-  const claimReady = finished && jackpot?.entered && !jackpot.claimed && roundEnded;
+function megapotPotLabel(round: MegapotRound | null) {
+  return round ? `$${round.potUsdc.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "Megapot";
+}
 
+/** 15s open on first mount, 10s on any re-open via `expand()`. */
+function useJackpotCollapse() {
   const [expanded, setExpanded] = useState(true);
   const collapseTimer = useRef<number | null>(null);
 
@@ -775,9 +796,6 @@ function JackpotBanner({
     if (collapseTimer.current !== null) window.clearTimeout(collapseTimer.current);
   };
 
-  // Shows the full panel for 15s on first mount, then auto-collapses to just
-  // the pot button so it stops covering the game. Re-opening it (click) only
-  // holds it open for 10s.
   useEffect(() => {
     collapseTimer.current = window.setTimeout(() => setExpanded(false), 15000);
     return clearCollapseTimer;
@@ -789,43 +807,36 @@ function JackpotBanner({
     collapseTimer.current = window.setTimeout(() => setExpanded(false), 10000);
   };
 
-  const potLabel = round
-    ? `$${round.potUsdc.toLocaleString(undefined, { maximumFractionDigits: 0 })}`
-    : "Megapot";
+  return { expanded, expand };
+}
 
-  if (!expanded) {
-    return (
-      <button
-        onClick={expand}
-        style={{
-          position: "fixed",
-          top: 8,
-          left: "50%",
-          transform: "translateX(-50%)",
-          zIndex: 85,
-          padding: "0.35rem 0.8rem",
-          borderRadius: 999,
-          background: "rgba(0,0,0,.72)",
-          color: "white",
-          fontFamily: "monospace",
-          fontSize: "0.8rem",
-          border: "none",
-          cursor: "pointer",
-        }}
-      >
-        🎰 {potLabel}
-      </button>
-    );
-  }
+/** Full jackpot details — pot, countdown, ticket status, claim button. No
+ *  positioning of its own; callers place it (inline in a status panel, or
+ *  as a positioned overlay while in-game). */
+function MegapotInfoBox({
+  round,
+  jackpot,
+  finished,
+  busy,
+  onClaim,
+  style,
+}: {
+  round: MegapotRound | null;
+  jackpot: JackpotState | null;
+  finished: boolean;
+  busy: boolean;
+  onClaim: () => void;
+  style?: React.CSSProperties;
+}) {
+  // ponytail: the ticket's own drawing window isn't tracked on-chain by us, so we
+  // approximate "settled" with the currently-active round's end time — accurate
+  // as long as the game finishes inside the same ~30min drawing it entered.
+  const roundEnded = round ? new Date(round.endsAt).getTime() <= Date.now() : false;
+  const claimReady = finished && jackpot?.entered && !jackpot.claimed && roundEnded;
 
   return (
     <div
       style={{
-        position: "fixed",
-        top: 8,
-        left: "50%",
-        transform: "translateX(-50%)",
-        zIndex: 85,
         display: "flex",
         flexWrap: "wrap",
         gap: 8,
@@ -839,11 +850,12 @@ function JackpotBanner({
         fontSize: "0.8rem",
         maxWidth: "94vw",
         textAlign: "center",
+        ...style,
       }}
     >
       <span>
         🎰 Megapot{" "}
-        {round ? `${potLabel} · draws in ${formatCountdown(round.endsAt)}` : "loading…"}
+        {round ? `${megapotPotLabel(round)} · draws in ${formatCountdown(round.endsAt)}` : "loading…"}
       </span>
       {jackpot?.entered && (
         <span style={{ opacity: 0.75 }}>· table ticket bought ({jackpot.ticketCount}, sponsored — free for players)</span>
@@ -861,6 +873,32 @@ function JackpotBanner({
       )}
       {jackpot?.claimed && <span style={{ opacity: 0.75 }}>· claimed</span>}
     </div>
+  );
+}
+
+/** Compact pot pill — sized to its own content, meant to sit inline beside
+ *  other header buttons rather than floating absolutely. */
+function MegapotPotButton({ round, onClick }: { round: MegapotRound | null; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        width: "fit-content",
+        height: 28,
+        padding: "0 12px",
+        borderRadius: 18,
+        background: "rgba(0,0,0,.72)",
+        color: "white",
+        fontFamily: "monospace",
+        fontSize: "0.8rem",
+        border: "none",
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      🎰 {megapotPotLabel(round)}
+    </button>
   );
 }
 

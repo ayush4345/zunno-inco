@@ -30,6 +30,7 @@ const GameScreen = ({
   isExtraTurn = false,
   turnTimerEnabled = true,
   actionsDisabled = false,
+  jackpotButton = /** @type {React.ReactNode} */ (null),
 }) => {
   // Get all player decks in an object
   const allPlayerDecks = {
@@ -224,7 +225,8 @@ const GameScreen = ({
           {/* Back */}
         </button>
 
-        <span style={{ display: "flex", gap: 8 }}>
+        <span style={{ display: "flex", gap: 8, width: "fit-content", alignItems: "center" }}>
+          {jackpotButton}
           <button
             type="button"
             className="glossy-button glossy-button-blue"

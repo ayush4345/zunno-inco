@@ -44,6 +44,15 @@ const ALLOWED_SELECTORS = new Set([
   toFunctionSelector('playCard(uint256,uint256,uint256,bytes[],uint8)'),
 ]);
 
+// dealCards has no msg.sender gate at all — recipients/order are fixed by
+// contract state, so anyone can advance the deal. That means it doesn't need
+// ERC-2771 forwarding or a player signature; the relayer can just call it
+// directly with its own key, right after startGame confirms, saving the
+// player a second wallet popup.
+const DEAL_CARDS_ABI = [
+  { type: 'function', name: 'dealCards', stateMutability: 'nonpayable', inputs: [{ name: 'gameId', type: 'uint256' }, { name: 'count', type: 'uint8' }], outputs: [] },
+];
+
 /** Pure guard, no network calls — kept separate so it's cheaply unit-testable. */
 function validateForwardRequest(request, { contractAddress }) {
   if (getAddress(request.to) !== getAddress(contractAddress)) {
@@ -101,4 +110,18 @@ async function relayForwardRequest(request) {
   });
 }
 
-module.exports = { relayForwardRequest, validateForwardRequest, ALLOWED_SELECTORS };
+/** @param {string|number} gameId  @param {number} count Cards to deal, 1..MAX_DEAL_BATCH (8) */
+async function submitDealCards(gameId, count) {
+  const contractAddress = process.env.ZUNNOINCO_ADDRESS;
+  if (!contractAddress) throw new Error('relayer not configured');
+
+  const { walletClient } = getClients();
+  return walletClient.writeContract({
+    address: contractAddress,
+    abi: DEAL_CARDS_ABI,
+    functionName: 'dealCards',
+    args: [BigInt(gameId), count],
+  });
+}
+
+module.exports = { relayForwardRequest, validateForwardRequest, submitDealCards, ALLOWED_SELECTORS };

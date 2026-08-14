@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { encodeFunctionData } = require('viem');
-const { validateForwardRequest } = require('./relayer');
+const { validateForwardRequest, submitDealCards } = require('./relayer');
 
 const CONTRACT = '0x1138A6984cCBAa8b09a10fd24753c0897F65fB70';
 const OTHER = '0x000000000000000000000000000000000000dEaD';
@@ -40,4 +40,14 @@ test('rejects a request carrying nonzero value', () => {
   assert.throws(() =>
     validateForwardRequest({ to: CONTRACT, data: drawCardData, value: '1' }, { contractAddress: CONTRACT })
   );
+});
+
+test('submitDealCards rejects when relayer is unconfigured', async () => {
+  const previous = process.env.ZUNNOINCO_ADDRESS;
+  delete process.env.ZUNNOINCO_ADDRESS;
+  try {
+    await assert.rejects(() => submitDealCards(1, 8), /relayer not configured/);
+  } finally {
+    if (previous !== undefined) process.env.ZUNNOINCO_ADDRESS = previous;
+  }
 });
