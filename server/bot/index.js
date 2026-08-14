@@ -1,6 +1,6 @@
 const { encodeFunctionData } = require('viem');
 const { getBotClients } = require('./wallet');
-const { startWatching } = require('./gameBot');
+const { startWatching, getBotStatus } = require('./gameBot');
 
 const JOIN_AS_BOT_ABI = [
   {
@@ -31,4 +31,4 @@ async function joinBotGame(gameId) {
   return hash;
 }
 
-module.exports = { joinBotGame };
+module.exports = { joinBotGame, getBotStatus };

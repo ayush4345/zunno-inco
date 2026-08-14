@@ -61,6 +61,31 @@ const watchers = new Map(); // gameId string -> interval handle
 // viem's nonce manager) if the bot needs to run several games concurrently.
 let acting = false;
 
+// So the client can tell "bot is thinking" from "bot is stuck" instead of
+// polling forever with no explanation — see GET /api/bot/status/:gameId.
+const status = new Map(); // gameId string -> { lastError, lastErrorAt, consecutiveFailures }
+const STUCK_AFTER_FAILURES = 3; // ~12s of consistent failures at POLL_MS=4000
+
+function recordFailure(gameId, err) {
+  const key = gameId.toString();
+  const prev = status.get(key);
+  status.set(key, {
+    lastError: err.message,
+    lastErrorAt: Date.now(),
+    consecutiveFailures: (prev?.consecutiveFailures || 0) + 1,
+  });
+}
+
+function recordSuccess(gameId) {
+  status.delete(gameId.toString());
+}
+
+function getBotStatus(gameId) {
+  const entry = status.get(gameId.toString());
+  if (!entry) return { stuck: false, lastError: null };
+  return { stuck: entry.consecutiveFailures >= STUCK_AFTER_FAILURES, ...entry };
+}
+
 function startWatching(gameId) {
   const key = gameId.toString();
   if (watchers.has(key)) return;
@@ -71,6 +96,7 @@ function startWatching(gameId) {
       await maybeAct(gameId);
     } catch (err) {
       logger.error('[Bot] game %s tick failed: %s', key, err.message);
+      recordFailure(gameId, err);
     }
   };
 
@@ -85,6 +111,7 @@ function stopWatching(gameId) {
     clearInterval(interval);
     watchers.delete(key);
   }
+  status.delete(key);
 }
 
 async function maybeAct(gameId) {
@@ -128,6 +155,7 @@ async function maybeAct(gameId) {
       const data = encodeFunctionData({ abi: GAME_ABI, functionName: 'drawCard', args: [gameId] });
       const hash = await walletClient.sendTransaction({ to: contractAddress, data });
       logger.info('[Bot] game %s: drew a card (%s)', gameId.toString(), hash);
+      recordSuccess(gameId);
       return;
     }
 
@@ -140,9 +168,10 @@ async function maybeAct(gameId) {
     });
     const hash = await walletClient.sendTransaction({ to: contractAddress, data });
     logger.info('[Bot] game %s: played card value %s (%s)', gameId.toString(), card.value.toString(), hash);
+    recordSuccess(gameId);
   } finally {
     acting = false;
   }
 }
 
-module.exports = { startWatching, stopWatching, GAME_ABI };
+module.exports = { startWatching, stopWatching, getBotStatus, GAME_ABI };

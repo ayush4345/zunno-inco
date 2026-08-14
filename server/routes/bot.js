@@ -1,5 +1,5 @@
 const express = require('express');
-const { joinBotGame } = require('../bot');
+const { joinBotGame, getBotStatus } = require('../bot');
 const logger = require('../logger');
 
 const router = express.Router();
@@ -19,6 +19,12 @@ router.post('/join', async (req, res) => {
     logger.error('bot join failed', { error: err.message });
     res.status(400).json({ error: err.message });
   }
+});
+
+// Lets the client tell "bot is thinking" from "bot is stuck" (e.g. can't
+// reach Inco's covalidators) instead of polling forever with no explanation.
+router.get('/status/:gameId', (req, res) => {
+  res.json(getBotStatus(req.params.gameId));
 });
 
 module.exports = router;

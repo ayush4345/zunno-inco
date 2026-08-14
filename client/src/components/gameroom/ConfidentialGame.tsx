@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { encodeFunctionData, type Address, type Hex } from "viem";
 import {
   useAccount,
@@ -123,6 +124,10 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   } = useSoundProvider();
   const contractAddress = getContractAddress(CHAIN_ID) as Address;
   const forwarderAddress = getForwarderAddress(CHAIN_ID) as Address | "";
+
+  const searchParams = useSearchParams();
+  const vsBot = searchParams.get("vsBot") === "1";
+  const [botStuck, setBotStuck] = useState(false);
 
   const [game, setGame] = useState<ChainGame | null>(null);
   const [handles, setHandles] = useState<Hex[]>([]);
@@ -512,6 +517,38 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
     };
   }, [jackpot?.entered, jackpot?.ticketId, contractAddress]);
 
+  // Playing against the on-chain bot: without this, a stuck bot (e.g. it
+  // can't reach Inco's covalidators) just leaves the human staring at "bot's
+  // turn" forever with no explanation. The bot keeps retrying regardless —
+  // this only surfaces that it's struggling, it doesn't change its behavior.
+  const isBotTurn =
+    vsBot && game?.phase === PHASE.active && game.currentPlayer.toLowerCase() !== address?.toLowerCase();
+  useEffect(() => {
+    if (!isBotTurn) {
+      setBotStuck(false);
+      return;
+    }
+    let cancelled = false;
+    const checkBotStatus = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/bot/status/${gameId}`, {
+          headers: { "ngrok-skip-browser-warning": "true" },
+        });
+        if (!res.ok || cancelled) return;
+        const body = await res.json();
+        setBotStuck(!!body.stuck);
+      } catch {
+        // best-effort — a failed status check just means we can't confirm either way
+      }
+    };
+    void checkBotStatus();
+    const interval = window.setInterval(() => void checkBotStatus(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isBotTurn, gameId]);
+
   const startGame = async () => {
     const data = encodeFunctionData({
       abi: unoGameABI,
@@ -823,6 +860,12 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         {busy || (turn === currentUser ? "Your turn" : `${shortAddress(game.currentPlayer)} is playing`)}
         <span style={{ opacity: 0.65 }}> · {game.direction === 1 ? "clockwise" : "counter-clockwise"}</span>
       </div>
+
+      {botStuck && (
+        <div style={{ position: "fixed", top: 100, left: "50%", transform: "translateX(-50%)", zIndex: 80, maxWidth: "90vw", padding: "0.5rem 1rem", borderRadius: 10, background: "rgba(127,29,29,.85)", color: "white", fontFamily: "monospace", fontSize: "0.8rem", textAlign: "center" }}>
+          Bot is having trouble reaching Inco right now — still retrying, this may take a moment.
+        </div>
+      )}
 
       {needsDecrypt && !busy && playerIndex >= 0 && (
         <button

@@ -348,7 +348,7 @@ export default function PlayGame() {
         throw new Error(body.error || "Bot could not join the table");
       }
 
-      router.push(`/game/${newGameId.toString()}`);
+      router.push(`/game/${newGameId.toString()}?vsBot=1`);
     } catch (error: any) {
       console.error("Failed to start computer game:", error);
       toast({
