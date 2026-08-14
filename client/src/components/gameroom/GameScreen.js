@@ -8,6 +8,7 @@ import useSound from "use-sound";
 import { useSoundProvider } from "../../context/SoundProvider";
 import { useRouter } from "next/navigation";
 import { MotionConfig } from "framer-motion";
+import { Volume2, VolumeX, Music, Music2 } from "lucide-react";
 
 const GameScreen = ({
   currentUser,
@@ -230,13 +231,13 @@ const GameScreen = ({
             aria-label={isSoundMuted ? "Enable sound effects" : "Mute sound effects"}
             aria-pressed={!isSoundMuted}
             title={isSoundMuted ? "Enable sound effects" : "Mute sound effects"}
-            style={{ minWidth: 88, height: 28, padding: "0 10px", borderRadius: 18 }}
+            style={{ width: 36, height: 28, padding: 0, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center" }}
             onClick={() => {
               toggleMute();
               if (isSoundMuted) playSfxPreview();
             }}
           >
-            {isSoundMuted ? "SFX off" : "SFX on"}
+            {isSoundMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
           </button>
           <button
             type="button"
@@ -244,14 +245,14 @@ const GameScreen = ({
             aria-label={isMusicMuted ? "Play background music" : "Pause background music"}
             aria-pressed={!isMusicMuted}
             title={isMusicMuted ? "Play background music" : "Pause background music"}
-            style={{ minWidth: 92, height: 28, padding: "0 10px", borderRadius: 18 }}
+            style={{ width: 36, height: 28, padding: 0, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "center" }}
             onClick={() => {
               if (isMusicMuted) playBBgMusic();
               else pause();
               setMusicMuted(!isMusicMuted);
             }}
           >
-            {isMusicMuted ? "Music off" : "Music on"}
+            {isMusicMuted ? <Music2 size={16} /> : <Music size={16} />}
           </button>
         </span>
       </div>
