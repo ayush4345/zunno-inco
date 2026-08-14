@@ -60,6 +60,13 @@ class SocketManager {
       reconnection: true, // We'll handle reconnection manually
       timeout: this.config.timeout,
       transports: ['websocket', 'polling'],
+      // Bypasses ngrok's free-tier browser-warning interstitial. Only takes
+      // effect on the polling transport — browsers don't allow custom
+      // headers on native WebSocket connections, so a raw-websocket first
+      // attempt through an ngrok tunnel still falls back to polling.
+      extraHeaders: {
+        'ngrok-skip-browser-warning': 'true',
+      },
     });
 
     this.setupEventHandlers();

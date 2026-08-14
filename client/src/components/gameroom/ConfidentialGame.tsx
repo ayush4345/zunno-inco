@@ -352,7 +352,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         setBusy(`${label}: relaying…`);
         const res = await fetch(`${BACKEND_URL}/api/relay/forward`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
           body: JSON.stringify({
             from: message.from,
             to: message.to,
