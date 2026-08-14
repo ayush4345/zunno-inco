@@ -3,6 +3,7 @@ import PlayerViewofOpponent from "./PlayerViewofOpponent";
 import CommonView from "./CommonView";
 import MainPlayerView from "./MainPlayerView";
 import bgMusic from "../../assets/sounds/game-bg-music.mp3";
+import cardPlayedSound from "../../assets/sounds/card-played-sound.mp3";
 import useSound from "use-sound";
 import { useSoundProvider } from "../../context/SoundProvider";
 import { useRouter } from "next/navigation";
@@ -57,9 +58,10 @@ const GameScreen = ({
 
   // For backward compatibility, keep opponentDeck as the first opponent
   const opponentDeck = opponentDecks[0]?.deck || [];
-  const { isSoundMuted, toggleMute, playCardPlayedSound } = useSoundProvider();
+  const { isSoundMuted, toggleMute } = useSoundProvider();
   const [isMusicMuted, setMusicMuted] = useState(true);
   const [playBBgMusic, { pause }] = useSound(bgMusic, { loop: true, volume: 0.18 });
+  const [playSfxPreview] = useSound(cardPlayedSound, { volume: 0.35 });
   const [pulseAnimation, setPulseAnimation] = useState(false);
   const [skipTimer, setSkipTimer] = useState(null);
   const [skipTimeRemaining, setSkipTimeRemaining] = useState(10);
@@ -231,7 +233,7 @@ const GameScreen = ({
             style={{ minWidth: 88, height: 28, padding: "0 10px", borderRadius: 18 }}
             onClick={() => {
               toggleMute();
-              if (isSoundMuted) playCardPlayedSound({ volume: 0.35 });
+              if (isSoundMuted) playSfxPreview();
             }}
           >
             {isSoundMuted ? "SFX off" : "SFX on"}

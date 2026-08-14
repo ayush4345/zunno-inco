@@ -78,7 +78,7 @@ export default function PlayGame() {
   // Lobby state
   const [activeTab, setActiveTab] = useState<LobbyTab>("public");
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [maxPlayersSelection, setMaxPlayersSelection] = useState(4);
+  const [maxPlayersSelection, setMaxPlayersSelection] = useState(2);
   const [displayCount, setDisplayCount] = useState(GAMES_PER_PAGE);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -721,7 +721,7 @@ export default function PlayGame() {
                     Number of Players
                   </label>
                   <div className="flex space-x-1 bg-white/5 rounded-xl p-1">
-                    {[2, 3, 4].map((num) => (
+                    {[2].map((num) => (
                       <button
                         key={num}
                         className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-all ${
