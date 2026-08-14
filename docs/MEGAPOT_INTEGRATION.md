@@ -37,25 +37,27 @@ verified on-chain anyway in case that changes later: USDC
 `0xb9560b43b91dE2c1DaF5dfbb76b2CFcDaFc13aBd` — source: `https://llms.megapot.io/`.)
 
 ## Deployment & funding status (Base Sepolia)
-Live contract: `0x1174a52267ae81cF0A5b565F272a98F2aB972164` (matches
-`client/.env` / `docs/INCO_INTEGRATION.md`). Deployed 2026-08-13 to add
-ERC-2771 meta-tx support for `drawCard`/`playCard` (see
-`docs/INCO_INTEGRATION.md` — trusted forwarder
-`0x9534B95CF466ce81cf5C6E256b4554F48A7e1E1d`). Confirmed on-chain:
-- Has the Megapot code (`jackpot()`/`usdc()`/`megapotAdmin()` all resolve),
-  `MAX_DEAL_BATCH()` reads `8`, `trustedForwarder()` resolves to the forwarder
-  above.
+Live contract: `0x82b2cCe9A52C7e56838a5C46833067F9Eb006911` (matches
+`client/.env` / `docs/INCO_INTEGRATION.md`). Deployed 2026-08-14 to add
+`joinAsBot`/`botOperator` (on-chain "Play with Computer") — trusted forwarder
+`0x464F256Dc30057Ed080FCd38f5dF6B6f745F9f26`.
 - **megapotAdmin** is `0x030e255635dfE3eB318943B726870535BFe6B9FB` (same key
-  as prior deployments). **Not yet funded with USDC** — jackpot entries
-  no-op silently (`JackpotSkipped`) until someone `approve`s USDC to the
-  contract and calls `fundJackpot(amount)` from that key.
+  as prior deployments).
+- **botOperator** is a dedicated bot key (see `server/.env` `BOT_PRIVATE_KEY`)
+  — the only address allowed to call `joinAsBot`.
+- Funded with **0.021145 USDC** (all that was left in the deployer wallet —
+  the prior 20 USDC funding is stranded on the old contract below) and 10
+  shuffle fees via the deploy script. Top up via `fundJackpot(amount)` /
+  `fundFees()` — both permissionless, callable by anyone.
 
-Three earlier deployments are now stale/abandoned — **do not fund or
+Four earlier deployments are now stale/abandoned — **do not fund or
 reference them**:
-- `0x1138A6984cCBAa8b09a10fd24753c0897F65fB70` — the previous live contract
-  (no meta-tx support). Still holds **18 USDC that cannot be recovered**:
-  `MegapotJackpot` has no withdraw/rescue function, only `fundJackpot`
-  (one-way in). Stranded testnet funds, not a live/mainnet loss.
+- `0x1174a52267ae81cF0A5b565F272a98F2aB972164` — prior live contract (had
+  meta-tx support, no bot support). Holds **20 USDC that cannot be
+  recovered**: `MegapotJackpot` has no withdraw/rescue function, only
+  `fundJackpot` (one-way in).
+- `0x1138A6984cCBAa8b09a10fd24753c0897F65fB70` — holds **18 USDC**, same
+  one-way-in reason.
 - `0x8Be448437C4f1789230d01f75C64A8B9b980081E` — holds **21.98 USDC**,
   same one-way-in reason.
 - `0xCe647b1EAc4866470b43124B988bEac3EF0562Ef` — redundant deploy from an

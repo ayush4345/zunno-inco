@@ -52,8 +52,8 @@ See [`docs/INCO_INTEGRATION.md`](docs/INCO_INTEGRATION.md) and
 ## Deployed contracts (Base Sepolia, chain 84532)
 | Contract | Address |
 |---|---|
-| `ZunnoInco` (game + Megapot) | [`0x1174a52267ae81cF0A5b565F272a98F2aB972164`](https://sepolia.basescan.org/address/0x1174a52267ae81cF0A5b565F272a98F2aB972164) |
-| `ERC2771Forwarder` (meta-tx relayer) | [`0x9534B95CF466ce81cf5C6E256b4554F48A7e1E1d`](https://sepolia.basescan.org/address/0x9534B95CF466ce81cf5C6E256b4554F48A7e1E1d) |
+| `ZunnoInco` (game + Megapot) | [`0x82b2cCe9A52C7e56838a5C46833067F9Eb006911`](https://sepolia.basescan.org/address/0x82b2cCe9A52C7e56838a5C46833067F9Eb006911) |
+| `ERC2771Forwarder` (meta-tx relayer) | [`0x464F256Dc30057Ed080FCd38f5dF6B6f745F9f26`](https://sepolia.basescan.org/address/0x464F256Dc30057Ed080FCd38f5dF6B6f745F9f26) |
 | Megapot USDC | [`0x036CbD53842c5426634e7929541eC2318f3dCF7e`](https://sepolia.basescan.org/address/0x036CbD53842c5426634e7929541eC2318f3dCF7e) |
 | Megapot Jackpot | [`0x465dA3c859f193A3807386387bEE941B2A4c3279`](https://sepolia.basescan.org/address/0x465dA3c859f193A3807386387bEE941B2A4c3279) |
 | Megapot `JackpotRandomTicketBuyer` | [`0x53c04e7e5044B28Ea8A4F9c4b26E3Ac1aeb63746`](https://sepolia.basescan.org/address/0x53c04e7e5044B28Ea8A4F9c4b26E3Ac1aeb63746) |
