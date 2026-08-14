@@ -729,10 +729,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   if (game.phase === PHASE.finished) {
     const won = game.winner.toLowerCase() === address.toLowerCase();
     return shell(
-      <StatusPanel
-        title={won ? "You won!" : `${shortAddress(game.winner)} won`}
-        detail="The contract settled the pot automatically."
-      >
+      <StatusPanel title={won ? "You won!" : `${shortAddress(game.winner)} won`}>
         <MegapotInfoBox
           round={megapotRound}
           jackpot={jackpot}
@@ -942,14 +939,14 @@ function StatusPanel({
   children,
 }: {
   title: string;
-  detail: string;
+  detail?: string;
   children?: React.ReactNode;
 }) {
   return (
     <div style={{ minHeight: "100svh", display: "grid", placeItems: "center", padding: 24 }}>
       <div style={{ width: "min(92vw, 620px)", padding: "2rem", borderRadius: 28, border: "2px solid #9CA34C", background: "rgba(76,55,28,.94)", color: "white", textAlign: "center", boxShadow: "0 20px 60px rgba(0,0,0,.45)" }}>
         <h1 style={{ marginBottom: 12, fontSize: "1.75rem", fontWeight: 800 }}>{title}</h1>
-        <p style={{ marginBottom: children ? 24 : 0, opacity: 0.8, overflowWrap: "anywhere" }}>{detail}</p>
+        {detail && <p style={{ marginBottom: children ? 24 : 0, opacity: 0.8, overflowWrap: "anywhere" }}>{detail}</p>}
         {children && <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>{children}</div>}
       </div>
     </div>
