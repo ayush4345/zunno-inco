@@ -11,9 +11,47 @@ const CHAIN_ID = 84532;
 // Deployment block of the current live ZunnoInco contract — bounds the
 // PlayerJoined log scan so it isn't asking the RPC to search the whole
 // chain. ponytail: hardcoded per-deploy; bump this if the contract is ever
-// redeployed, or switch to a paginated scan if the range grows large enough
-// for public RPCs to start rejecting it.
+// redeployed.
 const CONTRACT_DEPLOY_BLOCK = 45_419_684n;
+
+// Base Sepolia's public RPC (sepolia.base.org) caps eth_getLogs at a 10,000
+// block range per call, so the deploy-block-to-latest scan has to be
+// chunked instead of one open-ended request.
+const LOG_CHUNK_SIZE = 9_000n;
+
+type PublicClient = NonNullable<ReturnType<typeof usePublicClient>>;
+
+/** Splits [fromBlock, toBlock] into <=LOG_CHUNK_SIZE-wide ranges to stay under
+ *  public RPCs' eth_getLogs block-range cap. */
+async function getPlayerJoinedLogsChunked(
+  client: PublicClient,
+  { address, player, fromBlock, toBlock }: { address: `0x${string}`; player: `0x${string}`; fromBlock: bigint; toBlock: bigint },
+) {
+  const ranges: Array<[bigint, bigint]> = [];
+  for (let start = fromBlock; start <= toBlock; start += LOG_CHUNK_SIZE) {
+    const end = start + LOG_CHUNK_SIZE - 1n > toBlock ? toBlock : start + LOG_CHUNK_SIZE - 1n;
+    ranges.push([start, end]);
+  }
+  const chunks = await Promise.all(
+    ranges.map(([start, end]) =>
+      client.getLogs({
+        address,
+        event: {
+          type: 'event',
+          name: 'PlayerJoined',
+          inputs: [
+            { name: 'gameId', type: 'uint256', indexed: true },
+            { name: 'player', type: 'address', indexed: true },
+          ],
+        },
+        args: { player },
+        fromBlock: start,
+        toBlock: end,
+      }),
+    ),
+  );
+  return chunks.flat();
+}
 
 const PHASE_LABEL = ['Waiting for players', 'Dealing', 'In progress', 'Finished'];
 
@@ -44,28 +82,22 @@ export function MyGames() {
       setError(null);
 
       try {
-        const [createdIds, joinedLogs] = await Promise.all([
+        const [createdIds, latestBlock] = await Promise.all([
           publicClient.readContract({
             address: contractAddress,
             abi: unoGameABI,
             functionName: 'getGamesByCreator',
             args: [address],
           }),
-          publicClient.getLogs({
-            address: contractAddress,
-            event: {
-              type: 'event',
-              name: 'PlayerJoined',
-              inputs: [
-                { name: 'gameId', type: 'uint256', indexed: true },
-                { name: 'player', type: 'address', indexed: true },
-              ],
-            },
-            args: { player: address },
-            fromBlock: CONTRACT_DEPLOY_BLOCK,
-            toBlock: 'latest',
-          }),
+          publicClient.getBlockNumber(),
         ]);
+
+        const joinedLogs = await getPlayerJoinedLogsChunked(publicClient, {
+          address: contractAddress,
+          player: address,
+          fromBlock: CONTRACT_DEPLOY_BLOCK,
+          toBlock: latestBlock,
+        });
 
         const ids = new Set<bigint>(createdIds);
         for (const log of joinedLogs) {

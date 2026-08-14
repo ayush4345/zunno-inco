@@ -26,7 +26,7 @@ const Navbar = () => {
            Zunno
         </h2>
         <div className="flex gap-4 items-center">
-          {/* <StyledButton onClick={() => router.push("/profile")} roundedStyle='rounded-full' className='bg-[#8a2be2] text-md lg:text-2xl'>Profile</StyledButton> */}
+          <StyledButton onClick={() => router.push("/profile")} roundedStyle='rounded-full' className='bg-[#8a2be2] text-md lg:text-2xl hidden sm:block'>Profile</StyledButton>
           <StyledButton onClick={() => router.push("/play")} roundedStyle='rounded-full' className='bg-[#ff9000] text-md lg:text-2xl hidden sm:block'>Start Game</StyledButton>
         </div>
       </div>
