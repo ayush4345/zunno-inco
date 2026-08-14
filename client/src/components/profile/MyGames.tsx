@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
 import Link from 'next/link';
-import { useAccount, usePublicClient } from 'wagmi';
+import { encodeFunctionData } from 'viem';
+import { useAccount, usePublicClient, useSendTransaction, useWalletClient } from 'wagmi';
 import { unoGameABI } from '@/constants/unogameabi';
 import { getContractAddress } from '@/config/networks';
 import { fetchMegapotTickets, megapotStatusFor, type MegapotStatus } from '@/lib/megapotTickets';
@@ -95,8 +96,11 @@ interface GameSummary {
 export function MyGames() {
   const { address } = useAccount();
   const publicClient = usePublicClient({ chainId: CHAIN_ID });
+  const { data: walletClient } = useWalletClient({ chainId: CHAIN_ID });
+  const { sendTransactionAsync } = useSendTransaction();
   const [games, setGames] = useState<GameSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [claimingGameId, setClaimingGameId] = useState<bigint | null>(null);
 
   useEffect(() => {
     if (!address || !publicClient) {
@@ -182,6 +186,33 @@ export function MyGames() {
     };
   }, [address, publicClient]);
 
+  const claimJackpot = async (event: MouseEvent, gameId: bigint) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!walletClient?.account || !publicClient) return;
+    const contractAddress = getContractAddress(CHAIN_ID) as `0x${string}`;
+    if (!contractAddress) return;
+
+    setError(null);
+    setClaimingGameId(gameId);
+    try {
+      const data = encodeFunctionData({
+        abi: unoGameABI,
+        functionName: 'claimGameJackpot',
+        args: [gameId],
+      });
+      const hash = await sendTransactionAsync({ to: contractAddress, data, chainId: CHAIN_ID });
+      await publicClient.waitForTransactionReceipt({ hash });
+      setGames((prev) =>
+        prev?.map((g) => (g.gameId === gameId ? { ...g, megapotStatus: 'won-claimed' as const } : g)) ?? prev,
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setClaimingGameId(null);
+    }
+  };
+
   if (!address) return null;
 
   return (
@@ -232,8 +263,19 @@ export function MyGames() {
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    {jackpotLabel && (
-                      <Pill className={MEGAPOT_STATUS_PILL_CLASS[g.megapotStatus]}>{jackpotLabel}</Pill>
+                    {g.megapotStatus === 'won-unclaimed' ? (
+                      <button
+                        type="button"
+                        disabled={claimingGameId === g.gameId}
+                        onClick={(event) => void claimJackpot(event, g.gameId)}
+                        className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap bg-[#ff9000] text-white hover:bg-[#ff7000] disabled:opacity-60 disabled:cursor-wait transition-colors"
+                      >
+                        {claimingGameId === g.gameId ? 'Claiming…' : 'Claim jackpot'}
+                      </button>
+                    ) : (
+                      jackpotLabel && (
+                        <Pill className={MEGAPOT_STATUS_PILL_CLASS[g.megapotStatus]}>{jackpotLabel}</Pill>
+                      )
                     )}
                     <svg
                       width="16"
