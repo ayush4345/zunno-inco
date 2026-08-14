@@ -49,17 +49,6 @@ const Hero = () => {
               className="rounded-full"
             />
             <p className="text-white/80 text-lg">Blockchain's 1st Uno game</p>
-            <div className="flex items-center gap-4 mt-3">
-              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
-                <Image src="/images/logos/inco-logo.svg" alt="Inco" width={60} height={18} />
-                <span className="text-white/50 text-xs">confidential hands</span>
-              </div>
-              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
-                <Image src="/images/logos/megapot-logo.svg" alt="Megapot" width={18} height={18} />
-                <span className="text-white/90 text-xs font-semibold">Megapot</span>
-                <span className="text-white/50 text-xs">jackpot every game</span>
-              </div>
-            </div>
           </div>
 
           {/* <div className="space-y-2">
@@ -93,6 +82,17 @@ const Hero = () => {
           <span className={currentSlide === 0 ? 'text-white' : ''}>01</span>
           <span className={currentSlide === 1 ? 'text-white' : ''}>02</span>
         </div> */}
+
+        <div className="absolute bottom-6 left-8 md:left-16 lg:left-24 z-10 flex items-center gap-3">
+          <span className="text-white/40 text-xs uppercase tracking-widest">Powered by</span>
+          <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
+            <Image src="/images/logos/inco-logo.svg" alt="Inco" width={50} height={16} />
+          </div>
+          <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
+            <Image src="/images/logos/megapot-logo.svg" alt="Megapot" width={16} height={16} />
+            <span className="text-white/90 text-xs font-semibold">Megapot</span>
+          </div>
+        </div>
       </div>
     </section>
   );
