@@ -14,6 +14,7 @@ const gameStateManager = require('./gameStateManager');
 const userManager = require('./users');
 const trackingService = require('./tracking/service');
 const { setupCleanup } = require('./utils/cleanup');
+const { resumeActiveBotGames } = require('./bot');
 
 const PORT = process.env.PORT || 4000;
 const app = express();
@@ -35,6 +36,7 @@ setupCleanup({ gameStateManager, userManager });
 
 server.listen(PORT, () => {
   logger.info(`Zunno backend listening on port ${PORT}`);
+  void resumeActiveBotGames();
 });
 
 module.exports = server;

@@ -14,7 +14,7 @@ const CHAIN_ID = 84532;
 // PlayerJoined log scan so it isn't asking the RPC to search the whole
 // chain. ponytail: hardcoded per-deploy; bump this if the contract is ever
 // redeployed.
-const CONTRACT_DEPLOY_BLOCK = 45_419_684n;
+const CONTRACT_DEPLOY_BLOCK = 45_475_362n;
 
 // Base Sepolia's public RPC (sepolia.base.org) caps eth_getLogs at a 10,000
 // block range per call, so the deploy-block-to-latest scan has to be
