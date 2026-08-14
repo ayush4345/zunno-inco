@@ -15,8 +15,6 @@
   "dependencies": {
     "@base-org/account": "^1.1.1",
     "@base-org/account-ui": "^1.0.1",
-    "@coinbase/onchainkit": "^0.38.17",
-    "@farcaster/miniapp-sdk": "^0.2.1",
     "@inco/lightning-js": "^1.0.2",
     "@radix-ui/react-avatar": "^1.1.0",
     "@radix-ui/react-dialog": "^1.1.1",
