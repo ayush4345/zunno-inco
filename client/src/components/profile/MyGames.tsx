@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useAccount, usePublicClient } from 'wagmi';
 import { unoGameABI } from '@/constants/unogameabi';
 import { getContractAddress } from '@/config/networks';
+import { fetchMegapotTickets, megapotStatusFor, type MegapotStatus } from '@/lib/megapotTickets';
 
 const CHAIN_ID = 84532;
 
@@ -54,38 +55,6 @@ async function getPlayerJoinedLogsChunked(
 }
 
 const PHASE_LABEL = ['Waiting for players', 'Dealing', 'In progress', 'Finished'];
-
-// Base Sepolia only ever enters Megapot's *testnet* rounds — see the same
-// note in ConfidentialGame.tsx's round fetch.
-const MEGAPOT_TESTNET_API = 'https://api-testnet.megapot.io/v1';
-
-interface MegapotTicket {
-  user_ticket_id: string;
-  round_id: string;
-  matched_normals: number | null;
-  winnings_amount: { amount: string; decimals: number } | null;
-  claimed: boolean;
-}
-
-/** Every ticket Megapot has recorded for this wallet (our contract — tickets
- *  are bought in the contract's name, not the player's), paginated. */
-async function fetchMegapotTickets(wallet: string): Promise<MegapotTicket[]> {
-  const tickets: MegapotTicket[] = [];
-  let cursor: string | null = null;
-  do {
-    const url = new URL(`${MEGAPOT_TESTNET_API}/wallets/${wallet}/tickets`);
-    url.searchParams.set('limit', '100');
-    if (cursor) url.searchParams.set('cursor', cursor);
-    const res = await fetch(url.toString());
-    if (!res.ok) break;
-    const body: { data: MegapotTicket[]; next_cursor: string | null; has_more: boolean } = await res.json();
-    tickets.push(...body.data);
-    cursor = body.has_more ? body.next_cursor : null;
-  } while (cursor);
-  return tickets;
-}
-
-type MegapotStatus = 'not-entered' | 'pending' | 'lost' | 'won-unclaimed' | 'won-claimed';
 
 const MEGAPOT_STATUS_LABEL: Record<MegapotStatus, string> = {
   'not-entered': '',
@@ -163,17 +132,10 @@ export function MyGames() {
             ]);
 
             const [ticketIds, , entered] = jackpot;
-            let megapotStatus: MegapotStatus = 'not-entered';
-            if (entered && ticketIds[0] !== undefined) {
-              const ticket = ticketsById.get(ticketIds[0].toString());
-              if (!ticket || ticket.matched_normals === null) {
-                megapotStatus = 'pending';
-              } else if (ticket.winnings_amount && ticket.winnings_amount.amount !== '0') {
-                megapotStatus = ticket.claimed ? 'won-claimed' : 'won-unclaimed';
-              } else {
-                megapotStatus = 'lost';
-              }
-            }
+            const megapotStatus: MegapotStatus =
+              entered && ticketIds[0] !== undefined
+                ? megapotStatusFor(ticketsById.get(ticketIds[0].toString()))
+                : 'not-entered';
 
             return {
               gameId,

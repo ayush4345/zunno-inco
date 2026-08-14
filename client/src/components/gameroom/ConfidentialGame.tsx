@@ -28,6 +28,7 @@ import { useSoundProvider } from "@/context/SoundProvider";
 import GameBackground from "./GameBackground";
 import GameScreen from "./GameScreen";
 import ColourDialog from "./colourDialog";
+import { fetchMegapotTickets, megapotStatusFor, type MegapotStatus } from "@/lib/megapotTickets";
 
 const CHAIN_ID = 84532;
 const PHASE = { waiting: 0, opening: 1, active: 2, finished: 3 } as const;
@@ -84,7 +85,7 @@ type PendingColor =
   | { kind: "opening"; attested: AttestedValue }
   | { kind: "play"; handIndex: number };
 
-type JackpotState = { entered: boolean; claimed: boolean; ticketCount: number };
+type JackpotState = { entered: boolean; claimed: boolean; ticketCount: number; ticketId: bigint | null };
 type MegapotRound = { potUsdc: number; endsAt: string };
 
 const shortAddress = (value: string) => `${value.slice(0, 6)}…${value.slice(-4)}`;
@@ -131,6 +132,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   const [error, setError] = useState<string | null>(null);
   const [pendingColor, setPendingColor] = useState<PendingColor | null>(null);
   const [jackpot, setJackpot] = useState<JackpotState | null>(null);
+  const [megapotStatus, setMegapotStatus] = useState<MegapotStatus>("pending");
   const [megapotRound, setMegapotRound] = useState<MegapotRound | null>(null);
   const cardCache = useRef(new Map<string, PeekedCard>());
   const handSession = useRef<HandDecryptSession | null>(null);
@@ -184,6 +186,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         ticketCount: jackpotState[0].length,
         entered: jackpotState[2],
         claimed: jackpotState[3],
+        ticketId: jackpotState[0][0] ?? null,
       });
 
       const nextGame: ChainGame = {
@@ -480,6 +483,35 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
     return () => window.clearInterval(interval);
   }, []);
 
+  // claimGameJackpot has no phase requirement on-chain — a ticket can settle
+  // and be claimable while the UNO game is still in progress. Track the
+  // ticket's real Megapot status (not just the currently-active round's end
+  // time) so the claim button reflects that instead of waiting on
+  // game.phase === finished, which was blocking real claims.
+  useEffect(() => {
+    if (!jackpot?.entered || jackpot.ticketId === null || !contractAddress) {
+      setMegapotStatus("pending");
+      return;
+    }
+    const ticketId = jackpot.ticketId.toString();
+    let cancelled = false;
+    const loadStatus = async () => {
+      try {
+        const tickets = await fetchMegapotTickets(contractAddress);
+        const ticket = tickets.find((t) => t.user_ticket_id === ticketId);
+        if (!cancelled) setMegapotStatus(megapotStatusFor(ticket));
+      } catch {
+        // Data API is best-effort — the claim button just stays disabled.
+      }
+    };
+    void loadStatus();
+    const interval = window.setInterval(() => void loadStatus(), 20_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [jackpot?.entered, jackpot?.ticketId, contractAddress]);
+
   const startGame = async () => {
     const data = encodeFunctionData({
       abi: unoGameABI,
@@ -684,7 +716,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         <MegapotInfoBox
           round={megapotRound}
           jackpot={jackpot}
-          finished={false}
+          status={megapotStatus}
           busy={!!busy}
           onClaim={() => void claimJackpot()}
           style={{ width: "100%" }}
@@ -721,7 +753,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         <MegapotInfoBox
           round={megapotRound}
           jackpot={jackpot}
-          finished={false}
+          status={megapotStatus}
           busy={!!busy}
           onClaim={() => void claimJackpot()}
           style={{ width: "100%" }}
@@ -737,7 +769,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         <MegapotInfoBox
           round={megapotRound}
           jackpot={jackpot}
-          finished
+          status={megapotStatus}
           busy={!!busy}
           onClaim={() => void claimJackpot()}
           style={{ width: "100%" }}
@@ -758,7 +790,7 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
         <MegapotInfoBox
           round={megapotRound}
           jackpot={jackpot}
-          finished={game.phase === PHASE.finished}
+          status={megapotStatus}
           busy={!!busy}
           onClaim={() => void claimJackpot()}
           style={{ position: "fixed", top: 52, right: 12, zIndex: 85, maxWidth: "70vw" }}
@@ -851,23 +883,23 @@ function useJackpotCollapse() {
 function MegapotInfoBox({
   round,
   jackpot,
-  finished,
+  status,
   busy,
   onClaim,
   style,
 }: {
   round: MegapotRound | null;
   jackpot: JackpotState | null;
-  finished: boolean;
+  status: MegapotStatus;
   busy: boolean;
   onClaim: () => void;
   style?: React.CSSProperties;
 }) {
-  // ponytail: the ticket's own drawing window isn't tracked on-chain by us, so we
-  // approximate "settled" with the currently-active round's end time — accurate
-  // as long as the game finishes inside the same ~30min drawing it entered.
-  const roundEnded = round ? new Date(round.endsAt).getTime() <= Date.now() : false;
-  const claimReady = finished && jackpot?.entered && !jackpot.claimed && roundEnded;
+  // claimGameJackpot has no game-phase requirement on-chain — a ticket can
+  // settle (and be claimable) while the UNO game is still in progress, so
+  // readiness comes from the ticket's real Megapot status, not from whether
+  // the card game itself has finished.
+  const claimReady = jackpot?.entered && !jackpot.claimed && status === "won-unclaimed";
 
   return (
     <div
@@ -895,7 +927,10 @@ function MegapotInfoBox({
       {jackpot?.entered && (
         <span style={{ opacity: 0.75 }}>· table ticket bought ({jackpot.ticketCount}, sponsored — free for players)</span>
       )}
-      {jackpot?.entered && !jackpot.claimed && finished && (
+      {jackpot?.entered && !jackpot.claimed && status === "lost" && (
+        <span style={{ opacity: 0.75 }}>· no win this draw</span>
+      )}
+      {jackpot?.entered && !jackpot.claimed && (status === "pending" || status === "won-unclaimed") && (
         <button
           className="glossy-button glossy-button-blue"
           style={{ padding: "0.2rem 0.7rem" }}
@@ -903,7 +938,7 @@ function MegapotInfoBox({
           title={claimReady ? undefined : "Waiting for the Megapot drawing to settle"}
           onClick={onClaim}
         >
-          {claimReady ? "Claim jackpot" : `Claim opens in ${formatCountdown(round?.endsAt || new Date().toISOString())}`}
+          {claimReady ? "Claim jackpot" : "Waiting for the draw…"}
         </button>
       )}
       {jackpot?.claimed && <span style={{ opacity: 0.75 }}>· claimed</span>}
