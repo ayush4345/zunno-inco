@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { WalletConnection } from '@/components/WalletConnection';
+import { MyGames } from './MyGames';
 
 interface ProfilePageProps {
   userAccount: string | null;
@@ -62,6 +63,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ userAccount, connectWallet, i
               }} />
             </div>
           )}
+
+          <MyGames />
 
           {/* <div className="bg-black/30 p-6 rounded-lg">
             <h2 className="text-xl font-semibold mb-4">Game Statistics</h2>

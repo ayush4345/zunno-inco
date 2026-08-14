@@ -206,4 +206,13 @@ export const unoGameABI = [
     ],
     anonymous: false,
   },
+  {
+    type: "event",
+    name: "PlayerJoined",
+    inputs: [
+      { name: "gameId", type: "uint256", indexed: true },
+      { name: "player", type: "address", indexed: true },
+    ],
+    anonymous: false,
+  },
 ] as const;
