@@ -207,20 +207,3 @@ export const unoGameABI = [
     anonymous: false,
   },
 ] as const;
-
-// Legacy Noir verifier helpers remain available for the optional computer-game panel.
-export const VERIFIER_ADDRESSES = {
-  baseSepolia: {
-    shuffle: "0x9D2fE939001325fF9fb58C2a22dB60549D4Ba1dA",
-    deal: "0x4AeaB7206A19EE01FbAEC8aee3654e4E93B59BE6",
-    draw: "0x4d9CA273817BfEf07a9D73E23072DEabeb825060",
-    play: "0xB99a5Cb916bd38353C435d52dDfCb9F7b51bfF0a",
-  },
-} as const;
-
-export enum CircuitType {
-  Shuffle,
-  Deal,
-  Draw,
-  Play,
-}

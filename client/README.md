@@ -1,7 +1,7 @@
 # Zunno client
 
-UI ported from `Khel-fun/uno-game` (`main` → `/frontend`) with confidential
-multiplayer powered by the Inco contract and browser wallet.
+UI with confidential multiplayer powered by the Inco contract and browser
+wallet.
 
 ```sh
 # Node 20
