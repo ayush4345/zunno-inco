@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { encodeFunctionData, type Address, type Hex } from "viem";
 import {
   useAccount,
@@ -811,6 +812,9 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
           onClaim={() => void claimJackpot()}
           style={{ width: "100%" }}
         />
+        <Link href="/play" className="glossy-button glossy-button-blue">
+          Back to lobby
+        </Link>
       </StatusPanel>,
     );
   }
