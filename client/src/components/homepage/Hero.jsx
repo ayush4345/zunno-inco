@@ -49,9 +49,17 @@ const Hero = () => {
               className="rounded-full"
             />
             <p className="text-white/80 text-lg">Blockchain's 1st Uno game</p>
-            <p className="text-white/60 text-sm mt-2 tracking-wide">
-              Confidential hands powered by <span className="text-white/90 font-semibold">Inco</span> · Every game is a <span className="text-white/90 font-semibold">Megapot</span> jackpot entry
-            </p>
+            <div className="flex items-center gap-4 mt-3">
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
+                <Image src="/images/logos/inco-logo.svg" alt="Inco" width={60} height={18} />
+                <span className="text-white/50 text-xs">confidential hands</span>
+              </div>
+              <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5">
+                <Image src="/images/logos/megapot-logo.svg" alt="Megapot" width={18} height={18} />
+                <span className="text-white/90 text-xs font-semibold">Megapot</span>
+                <span className="text-white/50 text-xs">jackpot every game</span>
+              </div>
+            </div>
           </div>
 
           {/* <div className="space-y-2">
