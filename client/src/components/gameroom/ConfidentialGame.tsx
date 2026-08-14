@@ -707,7 +707,16 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
       <StatusPanel
         title={won ? "You won!" : `${shortAddress(game.winner)} won`}
         detail="The contract settled the pot automatically."
-      />,
+      >
+        <MegapotInfoBox
+          round={megapotRound}
+          jackpot={jackpot}
+          finished
+          busy={!!busy}
+          onClaim={() => void claimJackpot()}
+          style={{ width: "100%" }}
+        />
+      </StatusPanel>,
     );
   }
 
