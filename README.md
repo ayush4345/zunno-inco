@@ -75,7 +75,7 @@ ZunnoInco.sol (Base) ──► Inco TEE executor + covalidator attestations
 /contracts   → Foundry + Inco Lightning confidential UNO contract (NEW)
 /client      → React frontend (reuse from Khel-fun/ZunnoGame @ main-v-02) + @inco/lightning-js
 /server      → Rust backend (reuse from ZunnoGame) — role reduced to matchmaking/turns
-/docs        → BUILD_PLAN.md (8-day plan, port map, submission checklist)
+/docs        → INCO_INTEGRATION.md, MEGAPOT_INTEGRATION.md
 ```
 
 ## Quickstart (contracts)
