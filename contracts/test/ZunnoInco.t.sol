@@ -6,6 +6,8 @@ import {inco} from "@inco/lightning/src/Lib.sol";
 import {ZunnoInco} from "../src/ZunnoInco.sol";
 
 contract ZunnoHarness is ZunnoInco {
+    constructor() ZunnoInco(address(0)) {}
+
     function reverseFromZero(address first, address second) external returns (uint8) {
         Game storage g = games[++nextGameId];
         g.players.push(first);
@@ -21,7 +23,7 @@ contract ZunnoIncoTest is IncoTest {
 
     function setUp() public override {
         super.setUp();
-        game = new ZunnoInco();
+        game = new ZunnoInco(address(0));
         vm.deal(alice, 2 ether);
         vm.deal(bob, 2 ether);
     }

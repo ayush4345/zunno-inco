@@ -5,6 +5,7 @@ const RedisStorage = require('../services/redisStorage');
 const trackingService = require('../tracking/service');
 const { checkTrackingDbHealth } = require('../config/postgres');
 const trackingRouter = require('./tracking');
+const relayRouter = require('./relay');
 
 const router = express.Router();
 
@@ -56,5 +57,6 @@ router.get('/game/:gameId/code', (req, res) => {
 });
 
 router.use('/tracking', trackingRouter);
+router.use('/relay', relayRouter);
 
 module.exports = router;

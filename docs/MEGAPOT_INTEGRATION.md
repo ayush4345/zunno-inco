@@ -37,24 +37,27 @@ verified on-chain anyway in case that changes later: USDC
 `0xb9560b43b91dE2c1DaF5dfbb76b2CFcDaFc13aBd` — source: `https://llms.megapot.io/`.)
 
 ## Deployment & funding status (Base Sepolia)
-Live contract: `0x1138A6984cCBAa8b09a10fd24753c0897F65fB70` (matches
-`client/.env` / `docs/INCO_INTEGRATION.md`). Deployed 2026-08-12 to pick up
-`MAX_DEAL_BATCH = 8` (see `dealCards` — full 2-player deal in one tx instead
-of two). Confirmed on-chain:
+Live contract: `0x1174a52267ae81cF0A5b565F272a98F2aB972164` (matches
+`client/.env` / `docs/INCO_INTEGRATION.md`). Deployed 2026-08-13 to add
+ERC-2771 meta-tx support for `drawCard`/`playCard` (see
+`docs/INCO_INTEGRATION.md` — trusted forwarder
+`0x9534B95CF466ce81cf5C6E256b4554F48A7e1E1d`). Confirmed on-chain:
 - Has the Megapot code (`jackpot()`/`usdc()`/`megapotAdmin()` all resolve),
-  `MAX_DEAL_BATCH()` reads `8`.
-- **Funded**: holds `18_000_000` USDC (6 decimals = 18 USDC, ~18 ticket buys
-  at `ticketPrice()` = 1 USDC). `megapotAdmin` is
-  `0x030e255635dfE3eB318943B726870535BFe6B9FB`.
-- Entries beyond that will need topping up: `approve` USDC to the contract,
-  then `fundJackpot(amount)`, from whoever holds the `megapotAdmin` key.
+  `MAX_DEAL_BATCH()` reads `8`, `trustedForwarder()` resolves to the forwarder
+  above.
+- **megapotAdmin** is `0x030e255635dfE3eB318943B726870535BFe6B9FB` (same key
+  as prior deployments). **Not yet funded with USDC** — jackpot entries
+  no-op silently (`JackpotSkipped`) until someone `approve`s USDC to the
+  contract and calls `fundJackpot(amount)` from that key.
 
-Two earlier deployments are now stale/abandoned — **do not fund or reference
-them**:
-- `0x8Be448437C4f1789230d01f75C64A8B9b980081E` — the previous live contract.
-  Still holds **21.98 USDC that cannot be recovered**: `MegapotJackpot` has no
-  withdraw/rescue function, only `fundJackpot` (one-way in). Stranded testnet
-  funds, not a live/mainnet loss.
+Three earlier deployments are now stale/abandoned — **do not fund or
+reference them**:
+- `0x1138A6984cCBAa8b09a10fd24753c0897F65fB70` — the previous live contract
+  (no meta-tx support). Still holds **18 USDC that cannot be recovered**:
+  `MegapotJackpot` has no withdraw/rescue function, only `fundJackpot`
+  (one-way in). Stranded testnet funds, not a live/mainnet loss.
+- `0x8Be448437C4f1789230d01f75C64A8B9b980081E` — holds **21.98 USDC**,
+  same one-way-in reason.
 - `0xCe647b1EAc4866470b43124B988bEac3EF0562Ef` — redundant deploy from an
   earlier false alarm (chasing a stale-docs address that turned out fine).
   Has the Megapot code but 0 USDC, never wired into anything.

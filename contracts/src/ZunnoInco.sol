@@ -3,6 +3,7 @@ pragma solidity ^0.8.29;
 
 import {euint256, e} from "@inco/lightning/src/Lib.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 import {ConfidentialDeck} from "./kit/ConfidentialDeck.sol";
 import {UnoCards} from "./UnoCards.sol";
 import {MegapotJackpot} from "./MegapotJackpot.sol";
@@ -15,7 +16,7 @@ import {MegapotJackpot} from "./MegapotJackpot.sol";
 ///      contract for each shuffle via `fundFees()`. Every started table also
 ///      buys a Megapot lottery ticket (USDC) via the inherited MegapotJackpot
 ///      module — see `enterJackpot` / `claimGameJackpot`.
-contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot {
+contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot, ERC2771Context {
     using e for euint256;
 
     uint16 constant DECK = 108; // full UNO deck
@@ -88,6 +89,11 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot {
     event CardDrawn(uint256 indexed gameId, address indexed player);
     event CardPlayed(uint256 indexed gameId, address indexed player, uint256 value, uint8 activeColor);
     event GameFinished(uint256 indexed gameId, address indexed winner, uint256 payout);
+
+    /// @param trustedForwarder ERC-2771 forwarder allowed to relay `drawCard`/
+    ///        `playCard` on a player's behalf (see `_msgSender()` overrides
+    ///        below). Pass `address(0)` to disable meta-tx relaying entirely.
+    constructor(address trustedForwarder) ERC2771Context(trustedForwarder) {}
 
     receive() external payable {
         feeBalance += msg.value;
@@ -287,12 +293,16 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot {
     }
 
     // ── Draw ──────────────────────────────────────────────────────────────────
+    /// @notice Relayable via the trusted ERC-2771 forwarder — `_msgSender()`
+    ///         resolves to the real player even when a relayer submits the tx,
+    ///         so the turn check and hand ownership below are unaffected.
     function drawCard(uint256 gameId) external {
         Game storage g = games[gameId];
+        address player = _msgSender();
         require(g.phase == Phase.Active, "phase");
-        require(_current(g) == msg.sender, "not your turn");
-        hands[gameId][msg.sender].push(_dealTo(gameId, msg.sender)); // secret to caller
-        emit CardDrawn(gameId, msg.sender);
+        require(_current(g) == player, "not your turn");
+        hands[gameId][player].push(_dealTo(gameId, player)); // secret to caller
+        emit CardDrawn(gameId, player);
         _advance(g); // house rule: drawing ends the turn (simple demo flow)
     }
 
@@ -301,15 +311,17 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot {
     ///         submits its value + covalidator sigs. `_verifyValue` binds the
     ///         value to the on-chain handle, so they cannot lie. `chosenColor`
     ///         (0..3) applies only when the played card is a wild.
+    /// @dev Relayable via the trusted ERC-2771 forwarder — see `drawCard`.
     function playCard(uint256 gameId, uint256 handIndex, uint256 claimedValue, bytes[] calldata sigs, uint8 chosenColor)
         external
         nonReentrant
     {
         Game storage g = games[gameId];
+        address player = _msgSender();
         require(g.phase == Phase.Active, "phase");
-        require(_current(g) == msg.sender, "not your turn");
+        require(_current(g) == player, "not your turn");
 
-        euint256[] storage hand = hands[gameId][msg.sender];
+        euint256[] storage hand = hands[gameId][player];
         require(handIndex < hand.length, "bad index");
 
         _verifyValue(hand[handIndex], claimedValue, sigs); // trustless reveal
@@ -327,10 +339,10 @@ contract ZunnoInco is ConfidentialDeck, ReentrancyGuard, MegapotJackpot {
         } else {
             g.activeColor = UnoCards.decode(claimedValue).color;
         }
-        emit CardPlayed(gameId, msg.sender, claimedValue, g.activeColor);
+        emit CardPlayed(gameId, player, claimedValue, g.activeColor);
 
         if (hand.length == 0) {
-            _finish(g, gameId, msg.sender);
+            _finish(g, gameId, player);
             return;
         }
         _applyEffects(g, gameId, claimedValue);
