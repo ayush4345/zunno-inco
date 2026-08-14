@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import Link from 'next/link';
 import { encodeFunctionData } from 'viem';
 import { useAccount, usePublicClient, useSendTransaction, useWalletClient } from 'wagmi';
 import { unoGameABI } from '@/constants/unogameabi';
@@ -248,10 +247,7 @@ export function MyGames() {
             const jackpotLabel = MEGAPOT_STATUS_LABEL[g.megapotStatus];
             return (
               <li key={g.gameId.toString()}>
-                <Link
-                  href={`/game/${g.gameId}`}
-                  className="group flex items-center justify-between gap-4 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] px-4 py-3 transition-colors"
-                >
+                <div className="flex items-center justify-between gap-4 rounded-xl bg-white/[0.04] px-4 py-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="font-mono text-white/90 shrink-0">#{g.gameId.toString()}</span>
                     <Pill className={PHASE_PILL_CLASS[g.phase] || 'bg-white/10 text-white/70'}>
@@ -277,21 +273,8 @@ export function MyGames() {
                         <Pill className={MEGAPOT_STATUS_PILL_CLASS[g.megapotStatus]}>{jackpotLabel}</Pill>
                       )
                     )}
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-white/25 group-hover:text-white/50 transition-colors"
-                    >
-                      <path d="M9 6l6 6-6 6" />
-                    </svg>
                   </div>
-                </Link>
+                </div>
               </li>
             );
           })}
