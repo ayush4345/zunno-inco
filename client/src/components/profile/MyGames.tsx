@@ -55,12 +55,51 @@ async function getPlayerJoinedLogsChunked(
 
 const PHASE_LABEL = ['Waiting for players', 'Dealing', 'In progress', 'Finished'];
 
+// Base Sepolia only ever enters Megapot's *testnet* rounds — see the same
+// note in ConfidentialGame.tsx's round fetch.
+const MEGAPOT_TESTNET_API = 'https://api-testnet.megapot.io/v1';
+
+interface MegapotTicket {
+  user_ticket_id: string;
+  round_id: string;
+  matched_normals: number | null;
+  winnings_amount: { amount: string; decimals: number } | null;
+  claimed: boolean;
+}
+
+/** Every ticket Megapot has recorded for this wallet (our contract — tickets
+ *  are bought in the contract's name, not the player's), paginated. */
+async function fetchMegapotTickets(wallet: string): Promise<MegapotTicket[]> {
+  const tickets: MegapotTicket[] = [];
+  let cursor: string | null = null;
+  do {
+    const url = new URL(`${MEGAPOT_TESTNET_API}/wallets/${wallet}/tickets`);
+    url.searchParams.set('limit', '100');
+    if (cursor) url.searchParams.set('cursor', cursor);
+    const res = await fetch(url.toString());
+    if (!res.ok) break;
+    const body: { data: MegapotTicket[]; next_cursor: string | null; has_more: boolean } = await res.json();
+    tickets.push(...body.data);
+    cursor = body.has_more ? body.next_cursor : null;
+  } while (cursor);
+  return tickets;
+}
+
+type MegapotStatus = 'not-entered' | 'pending' | 'lost' | 'won-unclaimed' | 'won-claimed';
+
+const MEGAPOT_STATUS_LABEL: Record<MegapotStatus, string> = {
+  'not-entered': '',
+  pending: 'Jackpot: pending draw',
+  lost: 'Jackpot: no win',
+  'won-unclaimed': 'Jackpot won — claim now!',
+  'won-claimed': 'Jackpot won & claimed',
+};
+
 interface GameSummary {
   gameId: bigint;
   phase: number;
   won: boolean;
-  jackpotEntered: boolean;
-  jackpotClaimed: boolean;
+  megapotStatus: MegapotStatus;
 }
 
 export function MyGames() {
@@ -82,7 +121,7 @@ export function MyGames() {
       setError(null);
 
       try {
-        const [createdIds, latestBlock] = await Promise.all([
+        const [createdIds, latestBlock, megapotTickets] = await Promise.all([
           publicClient.readContract({
             address: contractAddress,
             abi: unoGameABI,
@@ -90,7 +129,9 @@ export function MyGames() {
             args: [address],
           }),
           publicClient.getBlockNumber(),
+          fetchMegapotTickets(contractAddress),
         ]);
+        const ticketsById = new Map(megapotTickets.map((t) => [t.user_ticket_id, t]));
 
         const joinedLogs = await getPlayerJoinedLogsChunked(publicClient, {
           address: contractAddress,
@@ -120,12 +161,25 @@ export function MyGames() {
                 args: [gameId],
               }),
             ]);
+
+            const [ticketIds, , entered] = jackpot;
+            let megapotStatus: MegapotStatus = 'not-entered';
+            if (entered && ticketIds[0] !== undefined) {
+              const ticket = ticketsById.get(ticketIds[0].toString());
+              if (!ticket || ticket.matched_normals === null) {
+                megapotStatus = 'pending';
+              } else if (ticket.winnings_amount && ticket.winnings_amount.amount !== '0') {
+                megapotStatus = ticket.claimed ? 'won-claimed' : 'won-unclaimed';
+              } else {
+                megapotStatus = 'lost';
+              }
+            }
+
             return {
               gameId,
               phase: Number(state[6]),
               won: state[9].toLowerCase() === address.toLowerCase(),
-              jackpotEntered: jackpot[2],
-              jackpotClaimed: jackpot[3],
+              megapotStatus,
             };
           }),
         );
@@ -156,11 +210,7 @@ export function MyGames() {
       {games && games.length > 0 && (
         <ul className="space-y-2">
           {games.map((g) => {
-            const jackpotNote = g.jackpotClaimed
-              ? 'Jackpot claimed'
-              : g.jackpotEntered
-                ? 'Jackpot ticket active'
-                : null;
+            const jackpotNote = MEGAPOT_STATUS_LABEL[g.megapotStatus];
             return (
               <li key={g.gameId.toString()}>
                 <Link
@@ -172,7 +222,7 @@ export function MyGames() {
                     {PHASE_LABEL[g.phase] || 'Unknown'}
                     {g.phase === 3 && (g.won ? ' · You won' : ' · Finished')}
                     {jackpotNote && (
-                      <span className={g.jackpotClaimed ? undefined : 'text-[#ff9000] font-semibold'}>
+                      <span className={g.megapotStatus === 'won-unclaimed' ? 'text-[#ff9000] font-semibold' : undefined}>
                         {' '}
                         · {jackpotNote}
                       </span>

@@ -460,7 +460,11 @@ export default function ConfidentialGame({ gameId }: { gameId: bigint }) {
   useEffect(() => {
     const loadRound = async () => {
       try {
-        const res = await fetch("https://api.megapot.io/v1/rounds/active");
+        // Base Sepolia only enters Megapot's *testnet* rounds — the production
+        // host (api.megapot.io) serves the real mainnet lottery, an entirely
+        // different pot/schedule unrelated to what our contract's tickets are
+        // actually in.
+        const res = await fetch("https://api-testnet.megapot.io/v1/rounds/active");
         if (!res.ok) return;
         const round = await res.json();
         setMegapotRound({
